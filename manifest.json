@@ -1,13 +1,15 @@
 {
   "name": "YouVote 2.0",
   "short_name": "YouVote 2.0",
-  "description": "Quickest group polls — dates, places, anything.",
+  "id": "/",
+  "description": "Quick group polls — dates, places, anything.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#141319",
   "theme_color": "#141319",
   "orientation": "portrait",
+  "prefer_related_applications": false,
   "share_target": {
     "action": "/",
     "method": "GET",

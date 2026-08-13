@@ -12,8 +12,7 @@
 // caller can prompt for manual entry.
 const GENERIC_TITLES = [
   'instagram', 'xhs', '小红书', 'rednote', 'tiktok', 'facebook', 'twitter',
-  'x', 'threads', 'youtube', 'whatsapp', 'telegram', 'snapchat', 'google maps',
-  'maps', 'google', 'google search',
+  'x', 'threads', 'youtube', 'whatsapp', 'telegram', 'snapchat', 'google maps', 'maps', 'google'
 ];
 
 // Google actively rate-limits/blocks automated fetches of maps.google.com
@@ -23,25 +22,10 @@ const GENERIC_TITLES = [
 // the broken/overflowing "name" bug).
 const BLOCK_MARKERS = [
   'unusual traffic', 'automated queries', 'recaptcha', 'our systems have detected',
-  'before you continue to google', 'consent.google.com',
 ];
 
 function isGoogleMapsUrl(u) {
   return /google\.[a-z.]+\/maps/i.test(u) || /goo\.gl\/maps/i.test(u) || /maps\.app\.goo\.gl/i.test(u);
-}
-
-// The search term is right there in the URL's ?q= param — reading it
-// needs zero network calls, and (unlike fetching the results page) it can
-// never come back as a generic/stripped title, which is what caused every
-// pasted Google Search link to show up as the option name "Google Search".
-function isGoogleSearchUrl(u) {
-  return /^https?:\/\/(www\.)?google\.[a-z.]+\/search(\?|$)/i.test(u);
-}
-function extractSearchQueryFromUrl(u) {
-  try {
-    const q = new URL(u).searchParams.get('q');
-    return q ? q.trim() : null;
-  } catch { return null; }
 }
 
 function isGenericAppShell(name) {
@@ -100,6 +84,56 @@ function despacePlus(s) {
   return s ? s.replace(/\+/g, ' ') : s;
 }
 
+/* ---------- Gemini fallback (server-side only — key never reaches the
+   browser) ----------
+   Used only when normal HTML scraping can't produce a real name: blocked
+   pages, and sites like Instagram/XHS/TikTok whose real content is
+   rendered client-side in JS so the raw server HTML only ever has a
+   generic app-shell title. Google Search grounding lets the model look up
+   what's actually at the URL instead of guessing from the link text alone.
+   Optional: if GEMINI_API_KEY isn't set in the Vercel project's env vars,
+   this is skipped entirely and the app falls back to manual entry exactly
+   like before — no key required to use the rest of the app. */
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+
+async function resolveViaGemini(url) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+
+  const prompt = `What is the specific name of the place, post, or page at this URL: ${url}\n\nRespond with ONLY the short name (e.g. a restaurant name, a place name, an article headline) — no explanation, no quotes, no punctuation around it. If you genuinely cannot determine what this specific link is, respond with exactly: UNKNOWN`;
+
+  for (const model of GEMINI_MODELS) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    try {
+      const r = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          signal: controller.signal,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            tools: [{ google_search: {} }],
+            generationConfig: { maxOutputTokens: 60, thinkingConfig: { thinkingBudget: 0 } },
+          }),
+        }
+      );
+      clearTimeout(timeout);
+      if (!r.ok) continue; // try next model in the fallback chain
+      const data = await r.json();
+      const text = data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('').trim();
+      if (!text || /^unknown$/i.test(text)) continue;
+      const name = cleanName(text.replace(/^["'\u201c]|["'\u201d]$/g, ''));
+      if (name && !isGenericAppShell(name)) return name;
+    } catch {
+      clearTimeout(timeout);
+      // network error/timeout on this model — fall through and try the next
+    }
+  }
+  return null;
+}
+
 function extractPlaceNameFromMapsUrl(u) {
   try {
     // Saved/tapped place: /maps/place/<name>/@lat,lng,...
@@ -128,52 +162,6 @@ function extractPlaceNameFromMapsUrl(u) {
 
 const UA = 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36';
 
-// Optional last resort for Instagram/XHS/TikTok/etc, where the plain HTML
-// never has real content (it's rendered client-side by their own JS) — so
-// the normal read above always comes back empty or generic for those.
-// Only runs if GEMINI_API_KEY is set as a Vercel environment variable; if
-// it isn't, or the call fails for any reason (wrong/expired key, quota,
-// Gemini also getting blocked by the platform, model/tool naming having
-// changed since this was written — check https://ai.google.dev/gemini-api/docs
-// if so), this quietly returns null and the caller falls through to the
-// existing "type it in below" behavior. The key lives only here, on the
-// server — it's never sent to the browser, so it's safe even if a friend
-// forwards the poll link onward; they can only ever reach this endpoint,
-// never see the key itself.
-async function tryGeminiNameFallback(url) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
-    const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        signal: controller.signal,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: `Look at this link and reply with ONLY a short (2-6 word) plain-text name for what it links to — a place, dish, product, or topic. No punctuation, no quotes, no explanation, just the name itself. If you genuinely cannot tell, reply with exactly: unknown\n\nLink: ${url}`,
-            }],
-          }],
-          tools: [{ url_context: {} }],
-        }),
-      }
-    );
-    clearTimeout(timeout);
-    if (!r.ok) return null;
-    const data = await r.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    const name = cleanName(text);
-    if (!name || name.toLowerCase() === 'unknown') return null;
-    return name;
-  } catch {
-    return null;
-  }
-}
-
 export default async function handler(req, res) {
   const { url } = req.query;
   if (!url || !url.trim()) {
@@ -181,17 +169,14 @@ export default async function handler(req, res) {
   }
   const trimmed = url.trim();
 
-  /* ---------- Google Maps ----------
-     Maps share links usually carry the place name right in the URL (e.g.
-     /maps/place/Entopia+by+Penang+Butterfly+Farm/...), so we try parsing
-     that first with zero network calls. Short links (maps.app.goo.gl)
-     don't carry the name in the path, so for those we follow the redirect
-     and re-parse the final URL. If even that has no readable name segment
-     (common for "starred place" / cid-only share links), we fall back to
-     reading the page's own title/og:title from the response we already
-     fetched — but only when the page isn't Google's "unusual traffic"
-     captcha wall, since anything pulled from that wall is garbage, not a
-     place name. */
+  /* ---------- Google Maps: never fetch page content ----------
+     Maps share links almost always already carry the place name right in
+     the URL (e.g. /maps/place/Entopia+by+Penang+Butterfly+Farm/...), so we
+     parse that directly with zero network calls — this is also the only
+     reliable path, since Google blocks server-side fetches of the actual
+     maps content page with a captcha wall. Short links (maps.app.goo.gl)
+     don't carry the name, so for those only, we resolve the redirect —
+     and only the redirect, never the page body Google would block. */
   if (isGoogleMapsUrl(trimmed)) {
     let name = cleanName(despacePlus(extractPlaceNameFromMapsUrl(trimmed)));
     let finalUrl = trimmed;
@@ -208,38 +193,17 @@ export default async function handler(req, res) {
         clearTimeout(timeout);
         finalUrl = r.url || trimmed;
         name = cleanName(despacePlus(extractPlaceNameFromMapsUrl(finalUrl)));
-
-        if (!name) {
-          const html = await r.text();
-          if (!looksBlocked(html)) {
-            let titleName = extractMetaContent(html, 'og:title');
-            if (!titleName) {
-              const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-              if (titleMatch) titleName = titleMatch[1].trim();
-            }
-            if (titleName) titleName = titleName.replace(/\s*[-·|]\s*Google Maps\s*$/i, '').trim();
-            titleName = cleanName(titleName);
-            if (!isGenericAppShell(titleName)) name = titleName;
-          }
-        }
       } catch (e) {
         return res.status(500).json({ error: `Couldn't follow that Maps link (${e.name === 'AbortError' ? 'timed out' : e.message || 'network error'}) — type the name in below.` });
       }
     }
 
     if (!name) {
+      const fallback = await resolveViaGemini(trimmed);
+      if (fallback) return res.status(200).json({ name: fallback, resolvedUrl: finalUrl, source: 'gemini' });
       return res.status(404).json({ error: "Couldn't read a name from that Maps link — type it in below." });
     }
     return res.status(200).json({ name, resolvedUrl: finalUrl });
-  }
-
-  /* ---------- Google Search ---------- */
-  if (isGoogleSearchUrl(trimmed)) {
-    const name = cleanName(extractSearchQueryFromUrl(trimmed));
-    if (!name) {
-      return res.status(404).json({ error: "Couldn't read a search term from that link — type it in below." });
-    }
-    return res.status(200).json({ name, resolvedUrl: trimmed });
   }
 
   /* ---------- everything else: normal page fetch + og:title ---------- */
@@ -261,6 +225,8 @@ export default async function handler(req, res) {
     const html = await r.text();
 
     if (looksBlocked(html)) {
+      const fallback = await resolveViaGemini(trimmed);
+      if (fallback) return res.status(200).json({ name: fallback, resolvedUrl: finalUrl, source: 'gemini' });
       return res.status(404).json({ error: "That site blocked automatic reading — type the name in below." });
     }
 
@@ -273,7 +239,7 @@ export default async function handler(req, res) {
     }
 
     if (name) {
-      name = name.replace(/\s*[-·|]\s*(Google Maps|Google Search|Instagram|Facebook)\s*$/i, '').trim();
+      name = name.replace(/\s*[-·|]\s*(Google Maps|Instagram|Facebook)\s*$/i, '').trim();
     }
 
     name = cleanName(name);
@@ -283,10 +249,8 @@ export default async function handler(req, res) {
     }
 
     if (!name) {
-      const geminiName = await tryGeminiNameFallback(trimmed);
-      if (geminiName) {
-        return res.status(200).json({ name: geminiName, resolvedUrl: finalUrl, image: null });
-      }
+      const fallback = await resolveViaGemini(trimmed);
+      if (fallback) return res.status(200).json({ name: fallback, resolvedUrl: finalUrl, source: 'gemini' });
       return res.status(404).json({ error: 'Could not find a name in that link — type it in below.' });
     }
 
@@ -303,6 +267,8 @@ export default async function handler(req, res) {
     res.status(200).json({ name, resolvedUrl: finalUrl, image: image || null });
   } catch (err) {
     clearTimeout(timeout);
+    const fallback = await resolveViaGemini(trimmed);
+    if (fallback) return res.status(200).json({ name: fallback, resolvedUrl: trimmed, source: 'gemini' });
     const msg = err.name === 'AbortError'
       ? 'Link took too long to load (timed out after 8s).'
       : `Could not read that link (${err.message || 'unknown network error'}).`;
