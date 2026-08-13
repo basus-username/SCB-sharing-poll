@@ -12,7 +12,8 @@
 // caller can prompt for manual entry.
 const GENERIC_TITLES = [
   'instagram', 'xhs', '小红书', 'rednote', 'tiktok', 'facebook', 'twitter',
-  'x', 'threads', 'youtube', 'whatsapp', 'telegram', 'snapchat', 'google maps', 'maps', 'google'
+  'x', 'threads', 'youtube', 'whatsapp', 'telegram', 'snapchat', 'google maps',
+  'maps', 'google', 'google search',
 ];
 
 // Google actively rate-limits/blocks automated fetches of maps.google.com
@@ -27,6 +28,20 @@ const BLOCK_MARKERS = [
 
 function isGoogleMapsUrl(u) {
   return /google\.[a-z.]+\/maps/i.test(u) || /goo\.gl\/maps/i.test(u) || /maps\.app\.goo\.gl/i.test(u);
+}
+
+// The search term is right there in the URL's ?q= param — reading it
+// needs zero network calls, and (unlike fetching the results page) it can
+// never come back as a generic/stripped title, which is what caused every
+// pasted Google Search link to show up as the option name "Google Search".
+function isGoogleSearchUrl(u) {
+  return /^https?:\/\/(www\.)?google\.[a-z.]+\/search(\?|$)/i.test(u);
+}
+function extractSearchQueryFromUrl(u) {
+  try {
+    const q = new URL(u).searchParams.get('q');
+    return q ? q.trim() : null;
+  } catch { return null; }
 }
 
 function isGenericAppShell(name) {
@@ -170,6 +185,15 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: "Couldn't read a name from that Maps link — type it in below." });
     }
     return res.status(200).json({ name, resolvedUrl: finalUrl });
+  }
+
+  /* ---------- Google Search ---------- */
+  if (isGoogleSearchUrl(trimmed)) {
+    const name = cleanName(extractSearchQueryFromUrl(trimmed));
+    if (!name) {
+      return res.status(404).json({ error: "Couldn't read a search term from that link — type it in below." });
+    }
+    return res.status(200).json({ name, resolvedUrl: trimmed });
   }
 
   /* ---------- everything else: normal page fetch + og:title ---------- */

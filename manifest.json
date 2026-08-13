@@ -1,7 +1,7 @@
 {
   "name": "YouVote 2.0",
   "short_name": "YouVote 2.0",
-  "description": "Quick group polls — dates, places, anything.",
+  "description": "Quickest group polls — dates, places, anything.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
