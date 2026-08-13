@@ -128,6 +128,52 @@ function extractPlaceNameFromMapsUrl(u) {
 
 const UA = 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36';
 
+// Optional last resort for Instagram/XHS/TikTok/etc, where the plain HTML
+// never has real content (it's rendered client-side by their own JS) — so
+// the normal read above always comes back empty or generic for those.
+// Only runs if GEMINI_API_KEY is set as a Vercel environment variable; if
+// it isn't, or the call fails for any reason (wrong/expired key, quota,
+// Gemini also getting blocked by the platform, model/tool naming having
+// changed since this was written — check https://ai.google.dev/gemini-api/docs
+// if so), this quietly returns null and the caller falls through to the
+// existing "type it in below" behavior. The key lives only here, on the
+// server — it's never sent to the browser, so it's safe even if a friend
+// forwards the poll link onward; they can only ever reach this endpoint,
+// never see the key itself.
+async function tryGeminiNameFallback(url) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const r = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: `Look at this link and reply with ONLY a short (2-6 word) plain-text name for what it links to — a place, dish, product, or topic. No punctuation, no quotes, no explanation, just the name itself. If you genuinely cannot tell, reply with exactly: unknown\n\nLink: ${url}`,
+            }],
+          }],
+          tools: [{ url_context: {} }],
+        }),
+      }
+    );
+    clearTimeout(timeout);
+    if (!r.ok) return null;
+    const data = await r.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const name = cleanName(text);
+    if (!name || name.toLowerCase() === 'unknown') return null;
+    return name;
+  } catch {
+    return null;
+  }
+}
+
 export default async function handler(req, res) {
   const { url } = req.query;
   if (!url || !url.trim()) {
@@ -237,6 +283,10 @@ export default async function handler(req, res) {
     }
 
     if (!name) {
+      const geminiName = await tryGeminiNameFallback(trimmed);
+      if (geminiName) {
+        return res.status(200).json({ name: geminiName, resolvedUrl: finalUrl, image: null });
+      }
       return res.status(404).json({ error: 'Could not find a name in that link — type it in below.' });
     }
 
