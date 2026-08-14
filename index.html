@@ -114,6 +114,21 @@
     background:var(--surface);border:1px solid var(--border);
     border-radius:var(--radius);padding:14px;margin-bottom:12px;
   }
+  /* one-line install prompt — no subtext, so it reads as a quick nudge
+     rather than a second thing competing with the create-poll card */
+  .install-banner-slim{
+    display:flex;align-items:center;gap:9px;
+    background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);
+    padding:9px 12px;margin-bottom:12px;font-size:12.5px;color:var(--text);
+  }
+  .install-banner-slim .btn-primary{width:auto;padding:6px 13px;font-size:12.5px;flex-shrink:0;}
+  /* secondary action styled as a small text link, not a second full-width
+     button competing with "Create poll" */
+  .text-link-btn{
+    background:transparent;border:none;color:var(--violet);font-size:12.5px;font-weight:600;
+    padding:8px 0 2px;width:100%;text-align:center;
+  }
+  .text-link-btn:active{opacity:.7;}
   .field-label{font-size:12.5px;color:var(--text);margin-bottom:4px;display:block;font-weight:700;}
   .field-label-sub{font-size:11px;color:var(--violet);font-weight:400;margin:0 0 8px;display:block;line-height:1.35;}
   .field{
@@ -158,6 +173,7 @@
     background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);
     padding:13px 15px;text-decoration:none;color:var(--text);
     touch-action:pan-y;will-change:transform;
+    -webkit-user-drag:none;user-select:none;-webkit-touch-callout:none;
   }
   .recent-item-title{font-weight:600;font-size:14.5px;}
   .recent-item-meta{font-size:12px;color:var(--text-muted);margin-top:2px;}
@@ -181,14 +197,18 @@
     box-shadow:0 10px 14px -10px rgba(0,0,0,0.45);
   }
   .poll-title-row .poll-title{margin:0;}
-  .poll-subtitle{font-size:13.5px;color:var(--text-muted);margin:4px 0 14px;}
-  .poll-meta{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--text-muted);flex-wrap:wrap;}
+  .poll-subtitle{font-size:13.5px;color:var(--text-muted);margin:4px 0 8px;}
+  /* one subtle line: always visible, no click needed, no option count clutter */
+  .poll-meta-subtle{font-size:11.5px;color:var(--text-muted);margin:2px 0 14px;}
+  .poll-toolbar{display:flex;gap:6px;flex-shrink:0;align-items:center;}
   .icon-btn{
     background:var(--surface-2);border:1px solid var(--border);color:var(--text);
     font-size:13px;font-weight:600;padding:6px 10px;border-radius:20px;
     display:inline-flex;align-items:center;gap:5px;
   }
   .icon-btn:active{background:var(--violet-dim);}
+  /* icon-only, compact — used together in the combined poll-header toolbar */
+  .icon-btn-sm{padding:6px 9px;font-size:14px;}
 
   .menu-popover{
     background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);
@@ -222,12 +242,13 @@
   }
   .opt-count{font-size:12.5px;color:var(--text-muted);flex-shrink:0;}
   .opt-chevron{
-    flex-shrink:0;color:var(--text-muted);font-size:13px;transition:transform .15s,background .15s;
-    width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;
-    background:var(--surface-2);border:1px solid var(--border);padding:0;
+    flex-shrink:0;color:var(--text-muted);font-size:12px;opacity:.55;
+    transition:transform .15s,background .15s,opacity .15s;
+    width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+    background:transparent;border:none;padding:0;margin:-5px -4px -5px 0;
   }
-  .opt-chevron:active{background:var(--violet-dim);}
-  .opt-chevron.open{transform:rotate(180deg);}
+  .opt-chevron:active{background:var(--surface-2);opacity:1;}
+  .opt-chevron.open{transform:rotate(180deg);opacity:.9;}
   .vote-btn{
     min-width:38px;height:24px;border-radius:7px;border:1.5px solid var(--border);
     background:var(--bg);color:var(--text-muted);
@@ -496,7 +517,39 @@ function swapModal(oldBackdrop, newBackdrop){
 }
 window.addEventListener('popstate', () => {
   document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
+  if (activePanelClose) {
+    const fn = activePanelClose;
+    activePanelClose = null;
+    fn();
+  }
 });
+
+/* ---------- non-modal "panel" back-button support ----------
+   Same idea as the modal helpers above, but for dropdown/menu/mode UI
+   that isn't a centered dialog — the ⋯ menu popover, bulk-select mode —
+   which should still behave like FB/IG comment sheets: phone back button
+   closes just that panel, not the whole poll view.
+   Deliberately does NOT cover the per-option "show details" chevron —
+   several of those can be expanded at once as a normal inline accordion,
+   and tying each one to a history entry would mean pressing back once
+   per expanded card just to leave a poll, which is worse than doing
+   nothing here. */
+let activePanelClose = null;
+function openPanel(onClose){
+  history.pushState({ panel: true }, '');
+  activePanelClose = onClose;
+}
+function closePanel(){
+  if (!activePanelClose) return;
+  activePanelClose = null;
+  if (history.state && history.state.panel) history.back();
+}
+// Hands the currently-pushed history entry to a new panel (e.g. the ⋯
+// menu closing directly into bulk-select mode) instead of popping then
+// pushing — avoids the same async popstate race described above.
+function swapPanel(onClose){
+  activePanelClose = onClose;
+}
 
 /* Extracts every URL from a pasted text blob, along with whatever nearby
    caption text sits next to it — e.g. a friend's WhatsApp message reading
@@ -872,15 +925,10 @@ function renderHome(){
     </div>
 
     ${(!isStandaloneMode() && (deferredInstallPrompt || isIOS())) ? `
-      <div class="card" id="install-banner" style="display:flex;align-items:center;gap:12px;">
-        <span style="font-size:24px;">📲</span>
-        <div style="flex:1;">
-          <div style="font-weight:600;font-size:14px;">Install YouVote as an app</div>
-          <div style="font-size:12.5px;color:var(--text-muted);">
-            ${isIOS() ? 'Tap the Share icon below, then "Add to Home Screen".' : 'Full-screen, no browser bar, works like a real app.'}
-          </div>
-        </div>
-        ${!isIOS() ? '<button class="btn btn-primary" id="install-app-btn" style="width:auto;padding:8px 16px;flex-shrink:0;">Install</button>' : ''}
+      <div class="install-banner-slim" id="install-banner">
+        <span style="font-size:16px;">📲</span>
+        <span style="flex:1;">${isIOS() ? 'Add to Home Screen via the Share icon' : 'Install as an app'}</span>
+        ${!isIOS() ? '<button class="btn btn-primary" id="install-app-btn">Install</button>' : ''}
       </div>
     ` : ''}
 
@@ -888,7 +936,7 @@ function renderHome(){
       <label class="field-label" for="new-title">Poll title</label>
       <input id="new-title" class="field" placeholder="e.g. Next outing?" maxlength="60" />
       <button id="create-btn" class="btn btn-primary">Create poll</button>
-      <button id="home-paste-links-btn" class="btn btn-ghost" style="margin-top:8px;">📋 Paste links from WhatsApp</button>
+      <button id="home-paste-links-btn" class="text-link-btn">📋 Paste links from WhatsApp</button>
     </div>
 
     ${recents.length ? `
@@ -898,7 +946,7 @@ function renderHome(){
         ${recents.map(r => `
           <div class="swipe-wrap">
             <button class="swipe-delete" data-swipe-delete="${r.id}" data-swipe-title="${escapeHtml(r.title)}" aria-label="Delete poll">🗑️</button>
-            <a class="recent-item" data-recent-id="${r.id}" href="?poll=${r.id}">
+            <a class="recent-item" data-recent-id="${r.id}" href="?poll=${r.id}" draggable="false">
               <div>
                 <div class="recent-item-title">${escapeHtml(r.title)}</div>
                 <div class="recent-item-meta">${new Date(r.ts).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</div>
@@ -954,6 +1002,20 @@ function renderHome(){
 /* ---------- generic swipe-to-delete (used by home list and poll options) ---------- */
 function bindSwipeToDelete(wrapSelector, rowSelector, delBtnAttr, onDelete, onAutoDelete){
   const OPEN = -76;
+  // Only one row should ever sit swiped-open at a time. Without this, two
+  // rows can be independently open with their own transform/suppressClick
+  // state at once, which is what made the trash icon on the second one
+  // need an extra tap — closing this one first keeps every row's state
+  // unambiguous.
+  let openRow = null;
+  function closeOpenRow(){
+    if (!openRow) return;
+    const { row: r, wrap: w } = openRow;
+    r.style.transition = 'transform .18s ease';
+    r.style.transform = 'translateX(0)';
+    w.classList.remove('swipe-armed');
+    openRow = null;
+  }
   document.querySelectorAll(wrapSelector).forEach(wrap => {
     const row = wrap.querySelector(rowSelector);
     const delBtn = wrap.querySelector(`[${delBtnAttr}]`);
@@ -962,6 +1024,7 @@ function bindSwipeToDelete(wrapSelector, rowSelector, delBtnAttr, onDelete, onAu
     let wrapWidth = 0, FAR = -9999, armed = false;
 
     row.addEventListener('pointerdown', (e) => {
+      if (openRow && openRow.row !== row) closeOpenRow();
       startX = e.clientX;
       startTranslate = current;
       dragging = true;
@@ -1003,6 +1066,7 @@ function bindSwipeToDelete(wrapSelector, rowSelector, delBtnAttr, onDelete, onAu
         row.style.opacity = '0';
         suppressClick = true;
         wrap.dataset.justDragged = '1';
+        openRow = null;
         setTimeout(() => onAutoDelete(delBtn), 140);
         return;
       }
@@ -1017,6 +1081,7 @@ function bindSwipeToDelete(wrapSelector, rowSelector, delBtnAttr, onDelete, onAu
           row.style.transform = 'translateX(0)';
           suppressClick = true;
           wrap.dataset.justDragged = '1';
+          openRow = null;
         }
         return;
       }
@@ -1024,6 +1089,7 @@ function bindSwipeToDelete(wrapSelector, rowSelector, delBtnAttr, onDelete, onAu
       row.style.transform = `translateX(${current}px)`;
       suppressClick = true; // a real drag should never also fire navigation
       wrap.dataset.justDragged = '1';
+      openRow = current === OPEN ? { row, wrap } : null;
     };
     row.addEventListener('pointerup', finish);
     row.addEventListener('pointercancel', finish);
@@ -1225,19 +1291,15 @@ function renderPollView(id, opts){
 
       <div class="poll-title-row">
         <h1 class="poll-title" style="flex:1;">${escapeHtml(pollData.title)}</h1>
-        <button class="icon-btn" id="edit-title-btn" title="Edit poll title">✏️</button>
+        <div class="poll-toolbar">
+          <button class="icon-btn icon-btn-sm" id="edit-title-btn" title="Edit poll title">✏️</button>
+          <button class="icon-btn icon-btn-sm" id="share-btn" title="Copy share link">🔗</button>
+          <button class="icon-btn icon-btn-sm" id="more-menu-btn" title="More options">⋯</button>
+        </div>
       </div>
       <div class="poll-header">
         ${pollData.subtitle ? `<div class="poll-subtitle">${escapeHtml(pollData.subtitle)}</div>` : ''}
-        <div class="poll-meta">
-          <span>${options.length} option${options.length===1?'':'s'}</span>
-          <span>·</span>
-          <span>${pollData.multiChoice ? 'Multiple choice' : 'Single choice'}</span>
-        </div>
-        <div class="chip-row" style="margin-top:10px;">
-          <button class="chip" id="share-btn" title="Copy share link">🔗 Share</button>
-          <button class="chip chip-icon-only" id="more-menu-btn" title="More options">⋯</button>
-        </div>
+        <div class="poll-meta-subtle">${pollData.multiChoice ? '☑️ Multiple choice' : '👤 Single choice'}</div>
         ${menuOpen ? `
           <div class="menu-popover" id="more-menu">
             <button class="menu-item" id="toggle-multi-btn">${pollData.multiChoice ? '⚪ Switch to single choice' : '☑️ Switch to multiple choice'}</button>
@@ -1335,12 +1397,14 @@ function renderPollView(id, opts){
       menuOpen = false;
       selectMode = true;
       selectedIds.clear();
+      swapPanel(() => { selectMode = false; selectedIds.clear(); draw(); });
       draw();
     });
 
     document.getElementById('bulk-cancel-btn')?.addEventListener('click', () => {
       selectMode = false;
       selectedIds.clear();
+      closePanel();
       draw();
     });
 
@@ -1350,18 +1414,21 @@ function renderPollView(id, opts){
       openBulkDeleteModal(pollId, chosen, () => {
         selectMode = false;
         selectedIds.clear();
+        closePanel();
         draw();
       });
     });
 
     document.getElementById('copy-results-btn')?.addEventListener('click', () => {
       menuOpen = false;
+      closePanel();
       draw();
       copyResultsAsImage(pollData, options);
     });
 
     document.getElementById('merge-identity-btn')?.addEventListener('click', () => {
       menuOpen = false;
+      closePanel();
       draw();
       if (!voter) { askVoterName((v) => openMergeIdentityModal(pollId, options, pollData, v), options); return; }
       openMergeIdentityModal(pollId, options, pollData, voter);
@@ -1372,6 +1439,7 @@ function renderPollView(id, opts){
         await updateDoc(doc(db, 'polls', pollId), { multiChoice: !pollData.multiChoice });
         toast(pollData.multiChoice ? 'Switched to single choice' : 'Switched to multiple choice');
         menuOpen = false;
+        closePanel();
       } catch (e) {
         toast(`Could not switch voting mode: ${e.message || 'unknown error'}`);
         console.error(e);
@@ -1381,7 +1449,13 @@ function renderPollView(id, opts){
     document.getElementById('edit-title-btn')?.addEventListener('click', () => openEditTitleModal(pollId, pollData.title, pollData.subtitle));
 
     document.getElementById('more-menu-btn')?.addEventListener('click', () => {
-      menuOpen = !menuOpen;
+      if (menuOpen) {
+        menuOpen = false;
+        closePanel();
+      } else {
+        menuOpen = true;
+        openPanel(() => { menuOpen = false; draw(); });
+      }
       draw();
     });
 
