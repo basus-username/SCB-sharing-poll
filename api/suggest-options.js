@@ -1,5 +1,5 @@
 // POST /api/suggest-options
-// Body: { pollTitle, pollSubtitle, existingNames }
+// Body: { pollTitle, pollSubtitle, sectionName, existingNames }
 // Returns: { suggestions: string[] } or { error }
 //
 // On-demand brainstorming — NOT a places database, and NOT a per-keystroke
@@ -28,6 +28,7 @@
 const GEMINI_MODELS = ['gemini-flash-lite-latest', 'gemini-flash-latest'];
 const MAX_TITLE_LEN = 100;
 const MAX_SUBTITLE_LEN = 150;
+const MAX_SECTION_LEN = 40;
 const MAX_EXISTING = 20;
 const MAX_NAME_LEN = 60;
 
@@ -44,14 +45,15 @@ export default async function handler(req, res) {
     return res.status(501).json({ error: 'AI suggestions are not configured.' });
   }
 
-  const { pollTitle, pollSubtitle, existingNames } = req.body || {};
+  const { pollTitle, pollSubtitle, sectionName, existingNames } = req.body || {};
   const safeTitle = (pollTitle || '').toString().slice(0, MAX_TITLE_LEN);
   const safeSubtitle = (pollSubtitle || '').toString().slice(0, MAX_SUBTITLE_LEN);
+  const safeSection = (sectionName || '').toString().slice(0, MAX_SECTION_LEN);
   const safeExisting = Array.isArray(existingNames)
     ? existingNames.slice(0, MAX_EXISTING).map(n => (n || '').toString().slice(0, MAX_NAME_LEN)).filter(Boolean)
     : [];
 
-  if (!safeTitle && !safeExisting.length) {
+  if (!safeTitle && !safeSection && !safeExisting.length) {
     return res.status(400).json({ error: 'Add a poll title or at least one option first, so there is something to build on.' });
   }
 
@@ -59,9 +61,14 @@ export default async function handler(req, res) {
     'You are brainstorming options for a group poll (e.g. "where should we eat", "which date works", "which movie").',
     `Poll title: ${safeTitle || '(untitled)'}`,
     safeSubtitle ? `Poll description: ${safeSubtitle}` : '',
+    // The section a poll is split into (e.g. "Food" vs "Dates" tabs in the
+    // same poll) is a much stronger, more specific signal than the overall
+    // poll title alone — when present, it should drive the category of
+    // suggestion far more than the title does.
+    safeSection ? `IMPORTANT: These options are specifically for the "${safeSection}" section/category of the poll — every suggestion MUST fit that category, even if the overall poll title suggests something broader.` : '',
     safeExisting.length ? `Options already added: ${safeExisting.join(', ')}` : '',
     '',
-    'Suggest 5 NEW options that fit the same category/spirit as what is already there (or the title, if nothing is added yet). Do not repeat or closely duplicate any option already added.',
+    'Suggest 5 NEW options that fit the same category/spirit as what is already there (or the section/title, if nothing is added yet). Do not repeat or closely duplicate any option already added.',
     'If this looks like it is asking for real, specific local businesses (a restaurant, a shop) that you cannot actually verify exist, suggest plausible generic categories or well-known chain-style ideas instead of inventing a fake specific name.',
     'Reply with ONLY a JSON array of 5 short strings, nothing else — no markdown, no explanation, no trailing commentary. Example: ["Option A","Option B","Option C","Option D","Option E"]',
   ].filter(Boolean).join('\n');
