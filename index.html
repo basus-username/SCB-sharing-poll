@@ -323,9 +323,9 @@
   .add-option-head h3{margin:0;font-size:14px;font-family:'Inter',sans-serif;font-weight:700;color:var(--violet);}
   .add-collapse-btn{background:transparent;border:none;color:var(--text-muted);font-size:12.5px;font-weight:600;padding:4px;}
   .add-option-card .field{background:var(--surface-2);border-color:var(--violet-dim);}
-  .ai-suggest-row{margin:-6px 0 4px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .ai-suggest-row{margin:-9px 0 4px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
   .ai-suggest-btn{
-    background:transparent;border:none;color:var(--violet);font-size:12px;font-weight:500;
+    background:transparent;border:none;color:var(--violet);font-size:12px;font-weight:400;
     padding:6px 0;text-align:left;
   }
   .ai-suggest-btn:active{color:var(--text);}
@@ -1554,13 +1554,13 @@ function renderPollView(id, opts){
             <button class="meta-toggle" id="toggle-multi-inline" title="Tap to switch voting mode">${activeMultiChoice ? 'Multiple choice' : 'Single choice'}</button>
           </div>
           <div class="chip-row">
-            <button class="chip chip-icon-only" id="share-btn" title="Copy share link" aria-label="Copy share link">🔗</button>
-            <button class="chip chip-icon-only" id="edit-title-btn" title="Edit poll title" aria-label="Edit poll title">✏️</button>
-            <button class="chip chip-icon-only" id="more-menu-btn" title="More options">⋯</button>
+            <button class="chip chip-icon-only" id="more-menu-btn" title="More options" aria-label="More options">⋯</button>
           </div>
         </div>
         ${menuOpen ? `
           <div class="menu-popover" id="more-menu">
+            <button class="menu-item" id="share-btn">🔗 Copy share link</button>
+            <button class="menu-item" id="edit-title-btn">✏️ Edit poll title</button>
             <button class="menu-item" id="copy-results-btn">${sectioned ? '📋 Share results' : '📋 Copy results'}</button>
             <button class="menu-item" id="merge-identity-btn">🙋 Claim votes from a previous name</button>
             ${sectioned
@@ -1584,7 +1584,6 @@ function renderPollView(id, opts){
         : `
           <div class="add-row">
             <button class="add-toggle-btn" id="add-toggle-btn">＋ ${sectioned && activeSection ? `Add to ${escapeHtml(activeSection.name)}` : 'Add an option'}</button>
-            <button class="add-toggle-btn" id="paste-links-btn" title="Paste links copied from WhatsApp">📋 Paste links</button>
           </div>
         `
       }
@@ -1656,9 +1655,10 @@ function renderPollView(id, opts){
     document.getElementById('share-btn')?.addEventListener('click', () => {
       navigator.clipboard?.writeText(location.href);
       toast('Link copied — send it to the group!');
+      closeOverlay(closeMenu);
     });
 
-    document.getElementById('paste-links-btn')?.addEventListener('click', () => {
+    function openPasteLinksFlow(){
       openPasteLinksModal(async (links, contextByUrl) => {
         toast(`Adding ${links.length} link${links.length===1?'':'s'}…`);
         try {
@@ -1669,7 +1669,7 @@ function renderPollView(id, opts){
           console.error(e);
         }
       });
-    });
+    }
 
     document.querySelectorAll('[data-section-tab]').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -1780,7 +1780,10 @@ function renderPollView(id, opts){
     }
     document.getElementById('toggle-multi-inline')?.addEventListener('click', () => toggleMultiChoice());
 
-    document.getElementById('edit-title-btn')?.addEventListener('click', () => openEditTitleModal(pollId, pollData.title, pollData.subtitle));
+    document.getElementById('edit-title-btn')?.addEventListener('click', () => {
+      closeOverlay(closeMenu);
+      openEditTitleModal(pollId, pollData.title, pollData.subtitle);
+    });
 
     document.getElementById('more-menu-btn')?.addEventListener('click', () => {
       if (menuOpen) {
@@ -1919,7 +1922,16 @@ function renderPollView(id, opts){
     });
 
     document.querySelectorAll('[data-add-tab]').forEach(btn => {
-      btn.addEventListener('click', () => { addTab = btn.getAttribute('data-add-tab'); draw(); });
+      btn.addEventListener('click', () => {
+        const tab = btn.getAttribute('data-add-tab');
+        // "links" isn't a real drawer state — it hands off to the existing
+        // bulk paste-and-extract modal, then leaves addTab exactly as it
+        // was so the drawer doesn't visually jump to a "links" tab that
+        // has no matching form.
+        if (tab === 'links') { openPasteLinksFlow(); return; }
+        addTab = tab;
+        draw();
+      });
     });
 
     if (addTab === 'text') {
@@ -2810,6 +2822,7 @@ function addOptionCardHtml(addTab, calState, draftName, draftLink){
       <div class="tab-row">
         <button class="tab-btn ${addTab === 'text' ? 'active' : ''}" data-add-tab="text">Text option</button>
         <button class="tab-btn ${addTab === 'date' ? 'active' : ''}" data-add-tab="date">Pick dates</button>
+        <button class="tab-btn" data-add-tab="links" title="Paste links copied from WhatsApp">Paste links</button>
       </div>
       ${addTab === 'text' ? textOptionFormHtml(draftName, draftLink) : calendarPickerHtml(calState)}
     </div>
