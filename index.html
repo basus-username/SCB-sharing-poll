@@ -323,7 +323,7 @@
   .add-option-head h3{margin:0;font-size:14px;font-family:'Inter',sans-serif;font-weight:700;color:var(--violet);}
   .add-collapse-btn{background:transparent;border:none;color:var(--text-muted);font-size:12.5px;font-weight:600;padding:4px;}
   .add-option-card .field{background:var(--surface-2);border-color:var(--violet-dim);}
-  .ai-suggest-row{margin:-9px 0 4px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .ai-suggest-row{margin:-10px 0 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
   .ai-suggest-btn{
     background:transparent;border:none;color:var(--violet);font-size:12px;font-weight:400;
     padding:6px 0;text-align:left;
@@ -3127,6 +3127,7 @@ function buildConfirmClaimModal(pollId, options, pollData, voter, oldId, rec){
       console.error(e);
     }
   });
+  return backdrop;
 }
 async function mergeVoterIdentity(pollId, options, pollData, oldId, currentVoter){
   const currentId = currentVoter.id;
