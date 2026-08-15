@@ -211,15 +211,16 @@
   }
 
   /* ---------- Poll view ---------- */
-  .poll-header{margin-bottom:12px;}
+  .poll-header{
+    margin:0 -16px 12px;padding:0 16px 8px;
+    background:linear-gradient(180deg,rgba(37,31,56,0.4) 0%,rgba(37,31,56,0) 100%);
+  }
   .poll-title{font-size:21px;margin:0 0 4px;}
   .poll-title-row{
     position:sticky;top:0;z-index:30;
-    background:linear-gradient(180deg,var(--violet-tint) 0%,var(--bg) 100%);
-    border-bottom:1px solid var(--violet-dim);
+    background:linear-gradient(180deg,var(--violet-tint) 0%,rgba(37,31,56,0.55) 65%,rgba(37,31,56,0) 100%);
     display:flex;align-items:center;gap:8px;
-    margin:0 -16px 0;padding:14px 16px 10px;
-    box-shadow:0 10px 14px -10px rgba(0,0,0,0.45);
+    margin:0 -16px 0;padding:14px 16px 14px;
   }
   .poll-title-row .poll-title{margin:0;}
   .poll-subtitle{font-size:12.5px;color:var(--text-muted);margin:3px 0 10px;}
@@ -1679,7 +1680,7 @@ function renderPollView(id, opts){
           <div class="menu-popover" id="more-menu">
             <button class="menu-item" id="share-btn">🔗 Copy share link</button>
             <button class="menu-item" id="edit-title-btn">✏️ Edit poll title</button>
-            <button class="menu-item" id="copy-results-btn">${sectioned ? '📋 Share results' : '📋 Copy results'}</button>
+            <button class="menu-item" id="copy-results-btn">📋 Share results</button>
             <button class="menu-item" id="merge-identity-btn">🙋 Claim votes from a previous name</button>
             ${sectioned
               ? `<button class="menu-item" id="rename-section-btn">✏️ Rename "${escapeHtml(activeSection ? activeSection.name : '')}"</button>`
@@ -2694,52 +2695,52 @@ function voteCount(opt){ return Object.keys(opt.votes || {}).length; }
    support on Android. If file-sharing isn't available, each image
    downloads individually instead so nothing is silently skipped. */
 async function shareOrCopyResults(pollData, options){
-  if (!hasSections(pollData)) return copyResultsAsImage(pollData, options);
-
-  toast('Preparing images…');
+  const sectioned = hasSections(pollData);
+  const caption = `Voted with YouVote: ${location.href}`;
+  toast(sectioned ? 'Preparing images…' : 'Preparing image…');
   try {
-    const sections = sectionListOf(pollData);
-    const files = [];
-    for (const s of sections) {
-      const sectionOptions = options.filter(o => o.sectionId === s.id);
-      const blob = await renderResultsBlob({ ...pollData, title: `${pollData.title} — ${s.name}` }, sectionOptions);
-      const filename = `${slugify(pollData.title) || 'poll'}-${slugify(s.name) || 'section'}-results.png`;
-      files.push(new File([blob], filename, { type: 'image/png' }));
+    let files;
+    if (sectioned) {
+      const sections = sectionListOf(pollData);
+      files = [];
+      for (const s of sections) {
+        const sectionOptions = options.filter(o => o.sectionId === s.id);
+        const blob = await renderResultsBlob({ ...pollData, title: `${pollData.title} — ${s.name}` }, sectionOptions);
+        const filename = `${slugify(pollData.title) || 'poll'}-${slugify(s.name) || 'section'}-results.png`;
+        files.push(new File([blob], filename, { type: 'image/png' }));
+      }
+    } else {
+      const blob = await renderResultsBlob(pollData, options);
+      files = [new File([blob], `${slugify(pollData.title) || 'poll'}-results.png`, { type: 'image/png' })];
     }
+
     if (navigator.canShare && navigator.canShare({ files })) {
       try {
-        await navigator.share({ files, title: pollData.title });
+        await navigator.share({ files, title: pollData.title, text: caption });
         return;
       } catch (e) {
         if (e && e.name === 'AbortError') return; // user closed the share sheet — not an error
-        console.error('Web Share failed, falling back to sequential download:', e);
+        console.error('Web Share failed, falling back:', e);
       }
     }
-    files.forEach(f => downloadBlob(f, f.name));
-    toast(`Downloaded ${files.length} image${files.length===1?'':'s'} — attach them from your gallery`);
-  } catch (e) {
-    toast(`Could not create results images: ${e.message || 'unknown error'}`);
-    console.error(e);
-  }
-}
 
-async function copyResultsAsImage(pollData, options){
-  toast('Preparing image…');
-  try {
-    const blob = await renderResultsBlob(pollData, options);
-    if (navigator.clipboard && window.ClipboardItem) {
+    if (files.length === 1 && navigator.clipboard && window.ClipboardItem) {
       try {
-        await navigator.clipboard.write([new window.ClipboardItem({ 'image/png': blob })]);
+        // A single ClipboardItem can hold more than one representation —
+        // pasting into an image-capable field (like a WhatsApp chat) picks
+        // up the picture, pasting into a text field picks up the caption.
+        const parts = { 'image/png': files[0], 'text/plain': new Blob([caption], { type: 'text/plain' }) };
+        await navigator.clipboard.write([new window.ClipboardItem(parts)]);
         toast('Results image copied — paste it into WhatsApp!');
         return;
       } catch (e) {
         console.error('Clipboard write failed, falling back to download:', e);
       }
     }
-    downloadBlob(blob, `${slugify(pollData.title) || 'poll'}-results.png`);
-    toast('Clipboard copy isn\u2019t available here — image downloaded instead.');
+    files.forEach(f => downloadBlob(f, f.name));
+    toast(`Downloaded ${files.length} image${files.length===1?'':'s'} — attach ${files.length===1?'it':'them'} and add this caption: ${caption}`);
   } catch (e) {
-    toast(`Could not create results image: ${e.message || 'unknown error'}`);
+    toast(`Could not create results image${sectioned ? 's' : ''}: ${e.message || 'unknown error'}`);
     console.error(e);
   }
 }
