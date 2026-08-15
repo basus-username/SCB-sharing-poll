@@ -84,7 +84,7 @@
 
   .topbar{
     display:flex;align-items:center;justify-content:space-between;
-    padding:6px 2px 22px;
+    padding:6px 2px 14px;
   }
   .brand{display:flex;align-items:center;gap:9px;text-decoration:none;}
   .brand-mark{
@@ -159,11 +159,11 @@
   .chip-row{display:flex;gap:7px;flex-wrap:wrap;position:relative;}
   .chip{
     background:var(--surface-2);border:1px solid var(--border);color:var(--text);
-    font-size:12px;font-weight:600;padding:6px 11px;border-radius:16px;
+    font-size:12px;font-weight:600;padding:5px 10px;border-radius:16px;
     display:inline-flex;align-items:center;gap:5px;
   }
   .chip:active{background:var(--violet-dim);}
-  .chip-icon-only{padding:6px 10px;}
+  .chip-icon-only{padding:5px 9px;}
 
   .recent-list{display:flex;flex-direction:column;gap:8px;}
   .swipe-wrap{position:relative;border-radius:var(--radius-sm);overflow:hidden;}
@@ -192,21 +192,21 @@
   }
 
   /* ---------- Poll view ---------- */
-  .poll-header{margin-bottom:18px;}
-  .poll-title{font-size:24px;margin:0 0 6px;}
+  .poll-header{margin-bottom:12px;}
+  .poll-title{font-size:21px;margin:0 0 4px;}
   .poll-title-row{
     position:sticky;top:0;z-index:30;background:var(--bg);
     display:flex;align-items:center;gap:8px;
-    margin:0 -16px 0;padding:14px 16px 6px;
+    margin:0 -16px 0;padding:12px 16px 4px;
     box-shadow:0 10px 14px -10px rgba(0,0,0,0.45);
   }
   .poll-title-row .poll-title{margin:0;}
-  .poll-subtitle{font-size:13.5px;color:var(--text-muted);margin:4px 0 14px;}
-  .poll-meta-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
-  .poll-meta{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--text-muted);flex-wrap:wrap;}
+  .poll-subtitle{font-size:12.5px;color:var(--text-muted);margin:3px 0 10px;}
+  .poll-meta-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;}
+  .poll-meta{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted);flex-wrap:wrap;}
   .meta-toggle{
     background:transparent;border:none;padding:2px 0;margin:-2px 0;
-    color:var(--text-muted);font-size:12.5px;font-family:inherit;font-weight:inherit;
+    color:var(--text-muted);font-size:12px;font-family:inherit;font-weight:inherit;
     text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;text-decoration-color:var(--border);
   }
   .meta-toggle:active{color:var(--violet);text-decoration-color:var(--violet);}
@@ -320,10 +320,10 @@
   .swipe-wrap-option.swipe-armed .option-card{filter:brightness(0.92);}
 
   /* ---------- collapsible "add option" control ---------- */
-  .add-row{display:flex;gap:8px;margin-bottom:10px;}
+  .add-row{display:flex;gap:8px;margin-bottom:8px;}
   .add-toggle-btn{
     flex:1;background:var(--violet-tint);border:1.5px dashed var(--violet);color:var(--violet);
-    border-radius:var(--radius);padding:9px;font-size:12.5px;font-weight:700;
+    border-radius:var(--radius);padding:8px;font-size:12px;font-weight:700;
     display:flex;align-items:center;justify-content:center;gap:5px;margin-bottom:0;
   }
   .add-toggle-btn:active{background:var(--violet-dim);}
@@ -402,18 +402,18 @@
      rendered at all when a poll actually has sections, so a plain poll
      looks exactly as it always did. */
   .section-tab-row{
-    display:flex;gap:7px;margin-bottom:14px;overflow-x:auto;padding-bottom:2px;
+    display:flex;gap:6px;margin-bottom:10px;overflow-x:auto;padding-bottom:2px;
     scrollbar-width:none;-webkit-overflow-scrolling:touch;touch-action:pan-x;
   }
   .section-tab-row::-webkit-scrollbar{display:none;}
   .section-tab-btn{
     flex:0 0 auto;background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);
-    padding:9px 15px;border-radius:20px;font-size:13px;font-weight:700;white-space:nowrap;
+    padding:8px 13px;border-radius:20px;font-size:12.5px;font-weight:700;white-space:nowrap;
   }
   .section-tab-btn.active{background:var(--violet);border-color:var(--violet);color:#fff;}
   .section-tab-add{
     flex:0 0 auto;background:transparent;border:1.5px dashed var(--violet-dim);color:var(--violet);
-    padding:9px 13px;border-radius:20px;font-size:13px;font-weight:700;
+    padding:8px 12px;border-radius:20px;font-size:12.5px;font-weight:700;
   }
   .section-tab-add:active{background:var(--violet-dim);}
 
