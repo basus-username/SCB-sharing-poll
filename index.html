@@ -1937,9 +1937,19 @@ function renderPollView(id, opts){
               existingNames: options.map(o => o.name),
             }),
           });
-          const data = await r.json().catch(() => ({}));
+          // Read as text first, not r.json() directly — a crashed/misrouted
+          // function can return an HTML error page instead of JSON, and
+          // r.json() throwing would silently swallow the real reason. This
+          // way the toast always shows something diagnosable instead of a
+          // generic "no suggestions" message that could mean anything.
+          const rawText = await r.text().catch(() => '');
+          let data = {};
+          try { data = rawText ? JSON.parse(rawText) : {}; } catch { data = {}; }
           if (!r.ok || !data.suggestions || !data.suggestions.length) {
-            toast(data.error || 'No suggestions right now — try adding a poll title first');
+            const fallback = rawText
+              ? `Server error (${r.status}): ${rawText.slice(0, 150)}`
+              : `No suggestions right now — try adding a poll title first`;
+            toast(data.error || fallback);
             return;
           }
           resultsEl.innerHTML = data.suggestions.map(s =>
