@@ -117,6 +117,11 @@
   .install-banner-text{flex:1;color:var(--text-muted);font-size:12px;line-height:1.3;}
   .install-banner-hint{font-size:11px;color:var(--text-muted);flex-shrink:0;max-width:110px;text-align:right;}
   .install-banner-btn{width:auto !important;padding:7px 14px !important;font-size:12.5px !important;flex-shrink:0;}
+  .install-banner-hint-btn{
+    background:var(--surface-2);border:1px solid var(--border);color:var(--text);
+    font-size:12px;font-weight:600;padding:7px 12px;border-radius:14px;flex-shrink:0;
+  }
+  .install-banner-hint-btn:active{background:var(--violet-dim);}
   .install-banner-dismiss{
     background:transparent;border:none;color:var(--text-muted);font-size:14px;
     padding:6px;flex-shrink:0;line-height:1;opacity:.6;
@@ -195,7 +200,14 @@
   }
   .poll-title-row .poll-title{margin:0;}
   .poll-subtitle{font-size:13.5px;color:var(--text-muted);margin:4px 0 14px;}
+  .poll-meta-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
   .poll-meta{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--text-muted);flex-wrap:wrap;}
+  .meta-toggle{
+    background:transparent;border:none;padding:2px 0;margin:-2px 0;
+    color:var(--text-muted);font-size:12.5px;font-family:inherit;font-weight:inherit;
+    text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;text-decoration-color:var(--border);
+  }
+  .meta-toggle:active{color:var(--violet);text-decoration-color:var(--violet);}
   .icon-btn{
     background:var(--surface-2);border:1px solid var(--border);color:var(--text);
     font-size:13px;font-weight:600;padding:6px 10px;border-radius:20px;
@@ -310,6 +322,19 @@
   .add-option-head h3{margin:0;font-size:14px;font-family:'Inter',sans-serif;font-weight:700;color:var(--violet);}
   .add-collapse-btn{background:transparent;border:none;color:var(--text-muted);font-size:12.5px;font-weight:600;padding:4px;}
   .add-option-card .field{background:var(--surface-2);border-color:var(--violet-dim);}
+  .ai-suggest-row{margin:-6px 0 4px;}
+  .ai-suggest-btn{
+    background:transparent;border:1px dashed var(--violet-dim);color:var(--violet);
+    font-size:11.5px;font-weight:700;padding:6px 11px;border-radius:14px;
+  }
+  .ai-suggest-btn:active{background:var(--violet-dim);}
+  .ai-suggest-btn:disabled{opacity:0.6;}
+  #ai-suggest-results:not(:empty){margin:8px 0 14px;display:flex;flex-wrap:wrap;gap:6px;}
+  .ai-suggest-chip{
+    background:var(--violet-tint);border:1px solid var(--violet-dim);color:var(--text);
+    font-size:12px;font-weight:500;padding:6px 11px;border-radius:14px;
+  }
+  .ai-suggest-chip:active{background:var(--violet-dim);}
   .autofill-row{display:flex;gap:6px;align-items:stretch;}
   .autofill-row .field{margin-bottom:0;flex:1;min-width:0;}
   .btn-secondary{background:var(--surface-2);color:var(--violet);border:1px solid var(--violet-dim);}
@@ -401,7 +426,18 @@
 <button id="temp-undo-banner" class="undo-fab" aria-label="Undo last delete">
   <span class="undo-fab-icon">↺</span><span class="undo-fab-text" id="temp-undo-banner-text"></span>
 </button>
-<div id="app"><div class="empty-state">Loading…</div></div>
+<div id="app">
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"><rect x="2" y="7" width="20" height="10" rx="5" stroke="#fff" stroke-width="2"/><path d="M8.5 12l2 2 4.5-4.5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div>
+        <div class="brand-name">YouVote 2.0</div>
+        <div class="credit">By YE Chew</div>
+      </div>
+    </div>
+  </div>
+  <div class="empty-state">Loading…</div>
+</div>
 <div id="toast" class="toast"></div>
 
 <script type="module">
@@ -474,10 +510,56 @@ function toast(msg){
   $toast.classList.add('show');
   setTimeout(()=>$toast.classList.remove('show'), 2200);
 }
-/* ---------- modal helpers: back button closes the modal, not the app ---------- */
-function openModal(backdrop){
+/* ---------- unified back-button-closable overlay stack ----------
+   Every transient overlay — a modal, the "..." menu, the add-option
+   panel, an expanded option's dropdown, bulk-select mode — pushes ONE
+   history entry when it opens, with a matching close callback stored
+   here. Hardware/browser back then closes only the most recently opened
+   overlay (LIFO), the same way Instagram's comment sheet closes over the
+   video instead of exiting the app — instead of the old behavior where
+   only actual modals had this and everything else (menu, dropdowns,
+   add-option) fell straight through to the home screen.
+
+   Programmatic closes (Cancel/X button, tapping outside, choosing a menu
+   item, re-tapping the same toggle) go through closeOverlay(), which does
+   the visual close immediately and THEN consumes the matching history
+   entry — never the reverse. Close functions must be idempotent (safe to
+   call twice) since the same function may also run from the popstate
+   handler below if the back button fires around the same time.
+
+   swapOverlay() replaces what the CURRENT top-of-stack entry closes,
+   WITHOUT changing history depth — used when one overlay hands off to
+   another at the same nesting level (e.g. the "..." menu opening
+   bulk-select mode, or one modal swapping for a confirmation). This
+   avoids pairing an explicit history.back() with an immediate pushState,
+   which would race the delayed popstate against whatever opens next. */
+const overlayStack = [];
+function pushOverlay(closeFn){
+  overlayStack.push(closeFn);
+  history.pushState({ overlay: true }, '');
+}
+function closeOverlay(closeFn){
+  closeFn();
+  const idx = overlayStack.lastIndexOf(closeFn);
+  if (idx !== -1) overlayStack.splice(idx, 1);
+  if (history.state && history.state.overlay) history.back();
+}
+function swapOverlay(newCloseFn){
+  if (overlayStack.length) overlayStack[overlayStack.length - 1] = newCloseFn;
+  else pushOverlay(newCloseFn);
+}
+window.addEventListener('popstate', () => {
+  if (!overlayStack.length) return;
+  const closeFn = overlayStack.pop();
+  closeFn();
+});
+
+/* ---------- modal helpers (built on the overlay stack above) ---------- */
+function openModal(backdrop, opts){
   document.body.appendChild(backdrop);
-  history.pushState({ modal: true }, '');
+  const closeFn = () => backdrop.remove();
+  backdrop._overlayClose = closeFn;
+  if (opts && opts.swap) swapOverlay(closeFn); else pushOverlay(closeFn);
   const modal = backdrop.querySelector('.modal');
   if (modal && !modal.querySelector('.modal-close')) {
     const x = document.createElement('button');
@@ -490,22 +572,16 @@ function openModal(backdrop){
 }
 function closeModal(backdrop){
   if (!backdrop.isConnected) return;
-  backdrop.remove();
-  if (history.state && history.state.modal) history.back();
+  closeOverlay(backdrop._overlayClose || (() => backdrop.remove()));
 }
 /* Swap one modal for another as a single step in a flow (e.g. picking an
-   option opens a confirmation). Deliberately does NOT call closeModal's
-   history.back() here — that's an async browser navigation, and calling
-   it right before pushing a new modal's history state creates a race
-   where the old modal's delayed popstate event fires AFTER the new modal
-   has opened and wipes it back out via the global popstate handler below,
-   making the new modal flash and vanish (or never visibly appear at all).
-   Swapping only removes the old backdrop from the DOM and appends the new
-   one, keeping the single pushed history entry from the *first* modal in
-   the chain — so back-button still closes the whole flow in one press. */
+   option opens a confirmation) — same history entry, new target. */
 function swapModal(oldBackdrop, newBackdrop){
   oldBackdrop.remove();
   document.body.appendChild(newBackdrop);
+  const closeFn = () => newBackdrop.remove();
+  newBackdrop._overlayClose = closeFn;
+  swapOverlay(closeFn);
   const modal = newBackdrop.querySelector('.modal');
   if (modal && !modal.querySelector('.modal-close')) {
     const x = document.createElement('button');
@@ -516,9 +592,7 @@ function swapModal(oldBackdrop, newBackdrop){
     modal.prepend(x);
   }
 }
-window.addEventListener('popstate', () => {
-  document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
-});
+
 
 /* Extracts every URL from a pasted text blob, along with whatever nearby
    caption text sits next to it — e.g. a friend's WhatsApp message reading
@@ -674,6 +748,29 @@ function addRecent(id, title){
 function removeRecent(id){
   const list = getRecents().filter(p => p.id !== id);
   localStorage.setItem('poll_recents', JSON.stringify(list));
+}
+
+/* ---------- local option-name suggestions (free, instant, works offline) ----------
+   Powers a native browser <datalist> — as you type "Zu…" it suggests "Zus"
+   if you've typed that before on this device, the same feel as a search
+   bar's own history. Zero API calls, so it costs nothing and never
+   competes with the AI suggest button's daily Gemini quota. Kept global
+   across polls (not per-poll) since venue/date names get reused across
+   outings with the same friend group. */
+function getSavedOptionNames(){
+  try { return JSON.parse(localStorage.getItem('option_name_history') || '[]'); } catch { return []; }
+}
+function saveOptionName(name){
+  const trimmed = (name || '').trim();
+  if (!trimmed) return;
+  const list = getSavedOptionNames().filter(n => n.toLowerCase() !== trimmed.toLowerCase());
+  list.unshift(trimmed);
+  localStorage.setItem('option_name_history', JSON.stringify(list.slice(0, 60)));
+}
+function optionNameDatalistHtml(){
+  const names = getSavedOptionNames();
+  if (!names.length) return '';
+  return `<datalist id="option-name-suggestions">${names.map(n => `<option value="${escapeHtml(n)}"></option>`).join('')}</datalist>`;
 }
 
 /* ---------- permanent undo fab (works for option-delete and poll-delete) ----------
@@ -888,15 +985,17 @@ function renderHome(){
       </div>
     </div>
 
-    <div class="hero-compact">Start a poll, drop in a few options — everyone votes live.</div>
+    <div class="hero-compact">Create a poll, share it, vote together.</div>
 
-    ${(!isStandaloneMode() && (deferredInstallPrompt || isIOS()) && !isInstallBannerSnoozed()) ? `
+    ${(!isStandaloneMode() && !isInstallBannerSnoozed()) ? `
       <div class="install-banner-compact" id="install-banner">
         <span class="install-banner-icon">📲</span>
         <span class="install-banner-text">Install as an app</span>
-        ${!isIOS()
-          ? '<button class="btn btn-primary install-banner-btn" id="install-app-btn">Install</button>'
-          : '<span class="install-banner-hint">Share → Add to Home Screen</span>'}
+        ${isIOS()
+          ? '<span class="install-banner-hint">Share → Add to Home Screen</span>'
+          : (deferredInstallPrompt
+              ? '<button class="btn btn-primary install-banner-btn" id="install-app-btn">Install</button>'
+              : '<button class="install-banner-hint-btn" id="install-manual-btn">How?</button>')}
         <button class="install-banner-dismiss" id="install-banner-dismiss" aria-label="Dismiss">✕</button>
       </div>
     ` : ''}
@@ -959,6 +1058,10 @@ function renderHome(){
     renderHome();
   });
 
+  document.getElementById('install-manual-btn')?.addEventListener('click', () => {
+    toast('Open your browser menu (⋮ or ≡) → "Add to Home screen" or "Install app"');
+  });
+
   document.getElementById('install-app-btn')?.addEventListener('click', async () => {
     if (!deferredInstallPrompt) return;
     deferredInstallPrompt.prompt();
@@ -976,6 +1079,21 @@ function renderHome(){
 /* ---------- generic swipe-to-delete (used by home list and poll options) ---------- */
 function bindSwipeToDelete(wrapSelector, rowSelector, delBtnAttr, onDelete, onAutoDelete){
   const OPEN = -76;
+  // Shared across every row in THIS group (home list, or poll options) so
+  // only one row can ever sit in the revealed/open state at once. Without
+  // this, swiping row A open then row B open left both visually revealed
+  // with two live delete buttons — tapping the second one needed an extra
+  // tap because pointer capture from the still-mid-gesture first row was
+  // interfering. Auto-closing the previous row the moment a new drag
+  // starts removes that whole class of bug instead of chasing the symptom.
+  let openRow = null;
+  function closeOpenRow(){
+    if (!openRow) return;
+    const { row } = openRow;
+    row.style.transition = 'transform .18s ease';
+    row.style.transform = 'translateX(0)';
+    openRow = null;
+  }
   document.querySelectorAll(wrapSelector).forEach(wrap => {
     const row = wrap.querySelector(rowSelector);
     const delBtn = wrap.querySelector(`[${delBtnAttr}]`);
@@ -984,6 +1102,7 @@ function bindSwipeToDelete(wrapSelector, rowSelector, delBtnAttr, onDelete, onAu
     let wrapWidth = 0, FAR = -9999, armed = false;
 
     row.addEventListener('pointerdown', (e) => {
+      if (openRow && openRow.row !== row) closeOpenRow();
       startX = e.clientX;
       startTranslate = current;
       dragging = true;
@@ -1025,6 +1144,7 @@ function bindSwipeToDelete(wrapSelector, rowSelector, delBtnAttr, onDelete, onAu
         row.style.opacity = '0';
         suppressClick = true;
         wrap.dataset.justDragged = '1';
+        if (openRow && openRow.row === row) openRow = null;
         setTimeout(() => onAutoDelete(delBtn), 140);
         return;
       }
@@ -1039,6 +1159,7 @@ function bindSwipeToDelete(wrapSelector, rowSelector, delBtnAttr, onDelete, onAu
           row.style.transform = 'translateX(0)';
           suppressClick = true;
           wrap.dataset.justDragged = '1';
+          openRow = null;
         }
         return;
       }
@@ -1046,6 +1167,7 @@ function bindSwipeToDelete(wrapSelector, rowSelector, delBtnAttr, onDelete, onAu
       row.style.transform = `translateX(${current}px)`;
       suppressClick = true; // a real drag should never also fire navigation
       wrap.dataset.justDragged = '1';
+      openRow = current === OPEN ? { row, wrap } : null;
     };
     row.addEventListener('pointerup', finish);
     row.addEventListener('pointercancel', finish);
@@ -1063,7 +1185,10 @@ function bindSwipeToDelete(wrapSelector, rowSelector, delBtnAttr, onDelete, onAu
       }
     }, true);
 
-    delBtn?.addEventListener('click', () => onDelete(delBtn));
+    delBtn?.addEventListener('click', () => {
+      if (openRow && openRow.row === row) openRow = null;
+      onDelete(delBtn);
+    });
   });
 }
 
@@ -1073,6 +1198,10 @@ function initSwipeToDelete(){
     const id = delBtn.getAttribute('data-swipe-delete');
     const title = delBtn.getAttribute('data-swipe-title');
     openDeletePollModal(id, title);
+  }, (delBtn) => {
+    const id = delBtn.getAttribute('data-swipe-delete');
+    const title = delBtn.getAttribute('data-swipe-title');
+    deletePollDirect(id, title);
   });
 }
 
@@ -1106,9 +1235,32 @@ function renderPollView(id, opts){
   let pendingAutoResolve = !!prefillLink;
   let pendingBatchAdd = !!pendingBatchLinks;
   const expandedIds = new Set();
+  const expandCloseFns = new Map();
   let selectMode = false;
   const selectedIds = new Set();
   const calState = { month: new Date(new Date().getFullYear(), new Date().getMonth(), 1), selected: new Set() };
+
+  /* ---------- back-button-closable state for this poll's overlays ---------- */
+  function closeMenu(){
+    if (!menuOpen) return;
+    menuOpen = false;
+    draw();
+  }
+  function closeAddPanel(){
+    if (!addExpanded) return;
+    addExpanded = false;
+    draw();
+  }
+  function closeSelectMode(){
+    if (!selectMode) return;
+    selectMode = false;
+    selectedIds.clear();
+    draw();
+  }
+  // If the add-option panel starts open (arriving via a shared link),
+  // register it as back-closable too, not just when opened by tapping
+  // the toggle button.
+  if (addExpanded) pushOverlay(closeAddPanel);
 
   /* ---------- local undo/redo (this device's own actions only) ----------
      Never touches anyone else's edits — it just remembers the inverse of
@@ -1246,23 +1398,24 @@ function renderPollView(id, opts){
       </div>
 
       <div class="poll-title-row">
-        <h1 class="poll-title" style="flex:1;">${escapeHtml(pollData.title)}</h1>
-        <button class="icon-btn" id="share-btn" title="Copy share link" aria-label="Copy share link">🔗</button>
-        <button class="icon-btn" id="edit-title-btn" title="Edit poll title" aria-label="Edit poll title">✏️</button>
+        <h1 class="poll-title">${escapeHtml(pollData.title)}</h1>
       </div>
       <div class="poll-header">
         ${pollData.subtitle ? `<div class="poll-subtitle">${escapeHtml(pollData.subtitle)}</div>` : ''}
-        <div class="poll-meta">
-          <span>${options.length} option${options.length===1?'':'s'}</span>
-          <span>·</span>
-          <span>${pollData.multiChoice ? 'Multiple choice' : 'Single choice'}</span>
-        </div>
-        <div class="chip-row" style="margin-top:8px;">
-          <button class="chip chip-icon-only" id="more-menu-btn" title="More options">⋯</button>
+        <div class="poll-meta-row">
+          <div class="poll-meta">
+            <span>${options.length} option${options.length===1?'':'s'}</span>
+            <span>·</span>
+            <button class="meta-toggle" id="toggle-multi-inline" title="Tap to switch voting mode">${pollData.multiChoice ? 'Multiple choice' : 'Single choice'}</button>
+          </div>
+          <div class="chip-row">
+            <button class="chip chip-icon-only" id="share-btn" title="Copy share link" aria-label="Copy share link">🔗</button>
+            <button class="chip chip-icon-only" id="edit-title-btn" title="Edit poll title" aria-label="Edit poll title">✏️</button>
+            <button class="chip chip-icon-only" id="more-menu-btn" title="More options">⋯</button>
+          </div>
         </div>
         ${menuOpen ? `
           <div class="menu-popover" id="more-menu">
-            <button class="menu-item" id="toggle-multi-btn">${pollData.multiChoice ? '⚪ Switch to single choice' : '☑️ Switch to multiple choice'}</button>
             <button class="menu-item" id="copy-results-btn">📋 Copy results</button>
             <button class="menu-item" id="merge-identity-btn">🙋 Claim votes from a previous name</button>
             <button class="menu-item" id="bulk-select-btn">☑️ Select options to delete</button>
@@ -1328,11 +1481,11 @@ function renderPollView(id, opts){
 
     document.getElementById('add-toggle-btn')?.addEventListener('click', () => {
       addExpanded = true;
+      pushOverlay(closeAddPanel);
       draw();
     });
     document.getElementById('add-collapse-btn')?.addEventListener('click', () => {
-      addExpanded = false;
-      draw();
+      closeOverlay(closeAddPanel);
     });
 
     document.getElementById('share-btn')?.addEventListener('click', () => {
@@ -1357,54 +1510,58 @@ function renderPollView(id, opts){
       menuOpen = false;
       selectMode = true;
       selectedIds.clear();
+      swapOverlay(closeSelectMode); // hands off the menu's history slot to select mode
       draw();
     });
 
     document.getElementById('bulk-cancel-btn')?.addEventListener('click', () => {
-      selectMode = false;
-      selectedIds.clear();
-      draw();
+      closeOverlay(closeSelectMode);
     });
 
     document.getElementById('bulk-delete-btn')?.addEventListener('click', () => {
       if (!selectedIds.size) return;
       const chosen = options.filter(o => selectedIds.has(o.id));
       openBulkDeleteModal(pollId, chosen, () => {
-        selectMode = false;
-        selectedIds.clear();
-        draw();
+        closeOverlay(closeSelectMode);
       });
     });
 
     document.getElementById('copy-results-btn')?.addEventListener('click', () => {
-      menuOpen = false;
-      draw();
+      closeOverlay(closeMenu);
       copyResultsAsImage(pollData, options);
     });
 
     document.getElementById('merge-identity-btn')?.addEventListener('click', () => {
       menuOpen = false;
       draw();
-      if (!voter) { askVoterName((v) => openMergeIdentityModal(pollId, options, pollData, v), options); return; }
-      openMergeIdentityModal(pollId, options, pollData, voter);
+      // Hands off the menu's history slot to whatever opens next (the
+      // voter-name prompt, or straight to the merge modal) instead of
+      // closing + immediately pushing — see the swapOverlay comment above.
+      if (!voter) { askVoterName((v) => openMergeIdentityModal(pollId, options, pollData, v, { swap: true }), options); return; }
+      openMergeIdentityModal(pollId, options, pollData, voter, { swap: true });
     });
 
-    document.getElementById('toggle-multi-btn')?.addEventListener('click', async () => {
+    async function toggleMultiChoice(){
       try {
         await updateDoc(doc(db, 'polls', pollId), { multiChoice: !pollData.multiChoice });
         toast(pollData.multiChoice ? 'Switched to single choice' : 'Switched to multiple choice');
-        menuOpen = false;
       } catch (e) {
         toast(`Could not switch voting mode: ${e.message || 'unknown error'}`);
         console.error(e);
       }
-    });
+    }
+    document.getElementById('toggle-multi-inline')?.addEventListener('click', () => toggleMultiChoice());
 
     document.getElementById('edit-title-btn')?.addEventListener('click', () => openEditTitleModal(pollId, pollData.title, pollData.subtitle));
 
     document.getElementById('more-menu-btn')?.addEventListener('click', () => {
-      menuOpen = !menuOpen;
-      draw();
+      if (menuOpen) {
+        closeOverlay(closeMenu);
+      } else {
+        menuOpen = true;
+        pushOverlay(closeMenu);
+        draw();
+      }
     });
 
     // Tapping anywhere on an option row votes for it. Only the chevron
@@ -1466,8 +1623,16 @@ function renderPollView(id, opts){
         const wrap = btn.closest('.swipe-wrap-option');
         if (wrap && wrap.dataset.justDragged === '1') { wrap.dataset.justDragged = ''; return; }
         const optId = btn.getAttribute('data-toggle-expand');
-        if (expandedIds.has(optId)) expandedIds.delete(optId); else expandedIds.add(optId);
-        draw();
+        if (expandedIds.has(optId)) {
+          const closeFn = expandCloseFns.get(optId);
+          if (closeFn) closeOverlay(closeFn); else { expandedIds.delete(optId); draw(); }
+        } else {
+          expandedIds.add(optId);
+          const closeFn = () => { expandedIds.delete(optId); expandCloseFns.delete(optId); draw(); };
+          expandCloseFns.set(optId, closeFn);
+          pushOverlay(closeFn);
+          draw();
+        }
       });
     });
 
@@ -1531,6 +1696,43 @@ function renderPollView(id, opts){
       const linkInput = document.getElementById('opt-link');
       nameInput?.addEventListener('input', () => { draftName = nameInput.value; });
       linkInput?.addEventListener('input', () => { draftLink = linkInput.value; });
+      document.getElementById('ai-suggest-btn')?.addEventListener('click', async () => {
+        const btn = document.getElementById('ai-suggest-btn');
+        const resultsEl = document.getElementById('ai-suggest-results');
+        btn.disabled = true; btn.textContent = '✨ Thinking…';
+        try {
+          const r = await fetch('/api/suggest-options', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              pollTitle: pollData.title,
+              pollSubtitle: pollData.subtitle,
+              existingNames: options.map(o => o.name),
+            }),
+          });
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok || !data.suggestions || !data.suggestions.length) {
+            toast(data.error || 'No suggestions right now — try adding a poll title first');
+            return;
+          }
+          resultsEl.innerHTML = data.suggestions.map(s =>
+            `<button type="button" class="ai-suggest-chip" data-ai-suggest="${escapeHtml(s)}">${escapeHtml(s)}</button>`
+          ).join('');
+          resultsEl.querySelectorAll('[data-ai-suggest]').forEach(chip => {
+            chip.addEventListener('click', () => {
+              const name = chip.getAttribute('data-ai-suggest');
+              draftName = name;
+              if (nameInput) nameInput.value = name;
+              nameInput?.focus();
+            });
+          });
+        } catch (e) {
+          toast('Could not get suggestions — check your connection');
+          console.error(e);
+        } finally {
+          btn.disabled = false; btn.textContent = '✨ Suggest options';
+        }
+      });
       document.getElementById('resolve-btn')?.addEventListener('click', () => pasteAndResolve());
       document.getElementById('clear-link-btn')?.addEventListener('click', () => {
         linkInput.value = '';
@@ -1646,17 +1848,17 @@ function renderPollView(id, opts){
       };
       const docRef = await addDoc(collection(db, 'polls', pollId, 'options'), payload);
       const addedId = docRef.id;
+      saveOptionName(name);
       pushHistory({
         label: `Add option: ${name}`,
         undo: () => deleteDoc(doc(db, 'polls', pollId, 'options', addedId)),
         redo: () => setDoc(doc(db, 'polls', pollId, 'options', addedId), payload),
       });
       toast('Added to the poll');
-      addExpanded = false;
       draftName = '';
       draftLink = '';
       draftThumbnail = null;
-      draw();
+      closeOverlay(closeAddPanel);
     } catch(e){
       toast(`Could not add option: ${e.message || 'unknown error'}`);
       console.error(e);
@@ -1678,7 +1880,7 @@ function renderPollView(id, opts){
       })));
       calState.selected.clear();
       toast(`Added ${dates.length} date${dates.length===1?'':'s'}`);
-      addExpanded = false;
+      closeOverlay(closeAddPanel);
     } catch (e) {
       toast(`Could not add dates: ${e.message || 'unknown error'}`);
       console.error(e);
@@ -2207,7 +2409,12 @@ function addOptionCardHtml(addTab, calState, draftName, draftLink){
 function textOptionFormHtml(draftName, draftLink){
   return `
     <label class="field-label">Name</label>
-    <input id="opt-name" class="field" placeholder="Option name" value="${escapeHtml(draftName || '')}" />
+    <input id="opt-name" class="field" placeholder="Option name" list="option-name-suggestions" value="${escapeHtml(draftName || '')}" />
+    ${optionNameDatalistHtml()}
+    <div class="ai-suggest-row">
+      <button type="button" id="ai-suggest-btn" class="ai-suggest-btn">✨ Suggest options</button>
+    </div>
+    <div id="ai-suggest-results"></div>
     <label class="field-label">Paste a link (optional)</label>
     <div class="autofill-row">
       <input id="opt-link" class="field" placeholder="e.g. Maps, XHS, IG link" value="${escapeHtml(draftLink || '')}" />
@@ -2256,6 +2463,35 @@ function calendarPickerHtml(calState){
 }
 
 /* ---------- delete poll modal (home page, with undo) ---------- */
+/* Far-swipe on the home screen commits immediately, no confirm tap — same
+   trade-off as an option's far-swipe. This DOES remove the poll and every
+   vote in it from the shared database for anyone with the link, not just
+   this device's recent-polls list, so the brief undo toast right after is
+   the only safety net; there's no confirm dialog in this specific path. */
+async function deletePollDirect(pollId, title){
+  try {
+    const pollSnap = await getDoc(doc(db, 'polls', pollId));
+    const savedPollData = pollSnap.exists() ? pollSnap.data() : { title, createdAt: serverTimestamp(), closed: false, multiChoice: false };
+    const optsSnap = await getDocs(collection(db, 'polls', pollId, 'options'));
+    const savedOptions = optsSnap.docs.map(d => ({ id: d.id, data: d.data() }));
+
+    await Promise.all(optsSnap.docs.map(d => deleteDoc(d.ref)));
+    await deleteDoc(doc(db, 'polls', pollId));
+    removeRecent(pollId);
+
+    showUndoBanner(`Deleted "${title}"`, async () => {
+      await setDoc(doc(db, 'polls', pollId), savedPollData);
+      await Promise.all(savedOptions.map(o => setDoc(doc(db, 'polls', pollId, 'options', o.id), o.data)));
+      addRecent(pollId, savedPollData.title || title);
+      renderHome();
+    });
+    renderHome();
+  } catch (e) {
+    toast(`Could not delete poll: ${e.message || 'unknown error'}`);
+    console.error(e);
+  }
+}
+
 function openDeletePollModal(pollId, title){
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
