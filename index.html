@@ -223,7 +223,7 @@
     margin:0 -16px 0;padding:14px 16px 14px;
   }
   .poll-title-row .poll-title{margin:0;}
-  .poll-subtitle{font-size:12.5px;color:var(--text-muted);margin:3px 0 10px;}
+  .poll-subtitle{font-size:12.5px;color:var(--text-muted);margin:3px 0 10px;white-space:pre-wrap;word-break:break-word;}
   .poll-meta-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;}
   .poll-meta{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted);flex-wrap:wrap;}
   .meta-toggle{
@@ -460,6 +460,7 @@
     padding:8px 13px;border-radius:20px;font-size:12.5px;font-weight:700;white-space:nowrap;
   }
   .section-tab-btn.active{background:var(--violet);border-color:var(--violet);color:#fff;}
+  .section-tab-btn.dragging{opacity:.5;}
   .section-tab-add{
     flex:0 0 auto;background:transparent;border:1.5px dashed var(--violet-dim);color:var(--violet);
     padding:8px 12px;border-radius:20px;font-size:12.5px;font-weight:700;
@@ -1487,6 +1488,10 @@ function renderPollView(id, opts){
   // (separate from the per-option swipe-to-delete below it, which uses its
   // own pointer-capture logic on each row — this only watches the tab strip).
   let tabTouchStartX = 0, tabTouchStartY = 0, tabTouchActive = false;
+  // Long-press-then-drag reorder of the section pills — separate from the
+  // quick-swipe-to-switch gesture above; a 350ms hold with barely any
+  // movement is what tells them apart (see the touch handlers below).
+  let tabDragTimer = null, tabDragging = false, tabDragEl = null, tabDragSuppressClick = false;
 
   /* ---------- back-button-closable state for this poll's overlays ---------- */
   function closeMenu(){
@@ -1795,6 +1800,7 @@ function renderPollView(id, opts){
 
     document.querySelectorAll('[data-section-tab]').forEach(btn => {
       btn.addEventListener('click', () => {
+        if (tabDragSuppressClick) { tabDragSuppressClick = false; return; } // this click is the tail end of a drag, not a tap
         const sid = btn.getAttribute('data-section-tab');
         if (sid === activeSectionId) return;
         activeSectionId = sid;
@@ -1818,20 +1824,76 @@ function renderPollView(id, opts){
       if (activeSection) openSectionModal(pollId, pollData, options, activeSection, null, { swap: true });
     });
 
-    /* ---------- swipe left/right on the section tab strip to switch tabs ----------
-       Deliberately scoped to just the tab row (not the whole page or the
-       option list below) so it can never fight with the per-option
-       swipe-to-delete gesture, which has its own well-tuned pointer-capture
-       logic on each row. */
+    /* ---------- section tab strip: quick swipe to switch, press-and-hold + drag to reorder ----------
+       Both gestures share one touch listener set so they can never
+       double-fire on the same touch. A hold under ~350ms with under ~8px
+       of movement resolves as a tap (handled by the click listener above)
+       or a swipe (handled on touchend below); holding past 350ms without
+       moving much instead "picks up" that pill so it can be dragged to a
+       new position. Deliberately scoped to just the tab row, never the
+       whole page or the option list, so it can't fight the per-option
+       swipe-to-delete gesture either. */
     const tabRow = document.getElementById('section-tab-row');
     if (tabRow && sections.length > 1) {
       tabRow.addEventListener('touchstart', (e) => {
         const t = e.touches[0];
         tabTouchStartX = t.clientX; tabTouchStartY = t.clientY; tabTouchActive = true;
+        const pillEl = e.target.closest('.section-tab-btn');
+        if (pillEl) {
+          clearTimeout(tabDragTimer);
+          tabDragTimer = setTimeout(() => {
+            tabDragging = true;
+            tabDragEl = pillEl;
+            pillEl.classList.add('dragging');
+          }, 350);
+        }
       }, { passive: true });
+
+      tabRow.addEventListener('touchmove', (e) => {
+        if (!tabTouchActive) return;
+        const t = e.touches[0];
+        const dx = t.clientX - tabTouchStartX;
+        const dy = t.clientY - tabTouchStartY;
+
+        if (!tabDragging) {
+          // moved too far to still be a "hold" — this is a swipe/scroll, cancel the pending pickup
+          if (Math.abs(dx) > 8 || Math.abs(dy) > 8) clearTimeout(tabDragTimer);
+          return;
+        }
+
+        e.preventDefault(); // now actively dragging — take over from the row's native horizontal scroll
+        const pills = Array.from(tabRow.querySelectorAll('.section-tab-btn')).filter(el => el !== tabDragEl);
+        let insertBefore = document.getElementById('section-tab-add') || null;
+        for (const pill of pills) {
+          const r = pill.getBoundingClientRect();
+          if (t.clientX < r.left + r.width / 2) { insertBefore = pill; break; }
+        }
+        if (insertBefore !== tabDragEl.nextSibling) tabRow.insertBefore(tabDragEl, insertBefore);
+      }, { passive: false });
+
       tabRow.addEventListener('touchend', (e) => {
+        clearTimeout(tabDragTimer);
         if (!tabTouchActive) return;
         tabTouchActive = false;
+
+        if (tabDragging) {
+          tabDragging = false;
+          tabDragEl?.classList.remove('dragging');
+          tabDragSuppressClick = true; // the click that follows this touch is drag fallout, not a real tap
+          const newOrderIds = Array.from(tabRow.querySelectorAll('.section-tab-btn')).map(el => el.getAttribute('data-section-tab'));
+          const unchanged = newOrderIds.every((sid, i) => sections[i] && sections[i].id === sid);
+          tabDragEl = null;
+          if (!unchanged) {
+            const updates = {};
+            newOrderIds.forEach((sid, i) => { updates[`sections.${sid}.order`] = i; });
+            updateDoc(doc(db, 'polls', pollId), updates).catch(err => {
+              toast(`Could not save the new order: ${err.message || 'unknown error'}`);
+              console.error(err);
+            });
+          }
+          return;
+        }
+
         const t = e.changedTouches[0];
         const dx = t.clientX - tabTouchStartX;
         const dy = t.clientY - tabTouchStartY;
@@ -2644,8 +2706,8 @@ function renderPollView(id, opts){
         <label class="field-label">Poll title</label>
         <input id="title-input" class="field" placeholder="e.g. Next outing?" value="${escapeHtml(currentTitle)}" maxlength="60" />
         <label class="field-label">Subtitle</label>
-        <p class="field-label-sub">Optional — eg: date, budget, or a short note</p>
-        <input id="subtitle-input" class="field" placeholder="e.g. Fri 8pm, split evenly" value="${escapeHtml(currentSubtitle || '')}" maxlength="80" />
+        <p class="field-label-sub">Optional — eg: date, budget, or a short note. Tap ⏎ to start a new line.</p>
+        <textarea id="subtitle-input" class="field" placeholder="e.g. Fri 8pm, split evenly" maxlength="160">${escapeHtml(currentSubtitle || '')}</textarea>
         <div style="display:flex;gap:10px;">
           <button class="btn btn-ghost" id="title-cancel" style="flex:1">Cancel</button>
           <button class="btn btn-primary" id="title-save" style="flex:1">Save</button>
