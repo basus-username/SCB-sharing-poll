@@ -153,6 +153,7 @@
   .btn-primary:disabled{opacity:0.5;}
   .btn-ghost{background:transparent;color:var(--text-muted);border:1px solid var(--border);}
   .btn-sm{padding:8px 12px;font-size:13px;}
+  .btn-xs{padding:6px 9px;font-size:11.5px;}
 
   /* compact action chips — smaller, secondary-feeling */
   .chip-row{display:flex;gap:7px;flex-wrap:wrap;position:relative;}
@@ -270,10 +271,18 @@
   }
   .select-check.checked{background:var(--violet);border-color:var(--violet);color:#fff;}
   .bulk-bar{
-    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
     background:var(--violet-tint);border:1.5px solid var(--violet);border-radius:var(--radius-sm);
-    padding:10px 12px;margin-bottom:10px;font-size:13px;color:var(--text);
+    padding:9px 10px 9px 12px;margin-bottom:10px;font-size:13px;color:var(--text);
   }
+  .bulk-bar-left{display:flex;align-items:center;gap:8px;min-width:0;flex-shrink:1;}
+  .bulk-select-all-btn{
+    background:transparent;border:none;color:var(--violet);font-size:12px;font-weight:700;
+    padding:2px 0;flex-shrink:0;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;
+  }
+  .bulk-select-all-btn:active{color:var(--text);}
+  .bulk-count{font-size:12px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .bulk-bar-actions{display:flex;gap:6px;flex-shrink:0;}
   .option-detail{padding:0 14px 14px;border-top:1px solid var(--border);}
   .option-notes{font-size:13px;color:var(--text-muted);line-height:1.4;padding-top:10px;}
   .option-sub{margin-top:8px;}
@@ -1524,6 +1533,7 @@ function renderPollView(id, opts){
     // rows don't jump around as people vote. "Leading" is still highlighted.
     const topCount = sectionOptions.length ? Math.max(...sectionOptions.map(voteCount)) : 0;
     const totalVotes = sectionOptions.reduce((sum, o) => sum + voteCount(o), 0);
+    const allSelected = selectMode && sectionOptions.length > 0 && sectionOptions.every(o => selectedIds.has(o.id));
 
     $app.innerHTML = `
       <div class="topbar">
@@ -1567,7 +1577,7 @@ function renderPollView(id, opts){
               ? `<button class="menu-item" id="rename-section-btn">✏️ Rename "${escapeHtml(activeSection ? activeSection.name : '')}"</button>`
               : `<button class="menu-item" id="add-first-section-btn">🏷️ Add a section</button>`
             }
-            <button class="menu-item" id="bulk-select-btn">☑️ Select options to delete</button>
+            <button class="menu-item" id="bulk-select-btn">🗑️ Select options to delete</button>
           </div>
         ` : ''}
       </div>
@@ -1592,10 +1602,13 @@ function renderPollView(id, opts){
 
       ${selectMode ? `
         <div class="bulk-bar">
-          <span>${selectedIds.size} selected</span>
-          <div style="display:flex;gap:8px;">
-            <button class="btn btn-ghost btn-sm" id="bulk-cancel-btn">Cancel</button>
-            <button class="btn btn-sm" id="bulk-delete-btn" style="background:var(--rose);color:#2a0f0f;" ${selectedIds.size ? '' : 'disabled'}>🗑️ Delete ${selectedIds.size || ''}</button>
+          <div class="bulk-bar-left">
+            <button class="bulk-select-all-btn" id="bulk-select-all-btn">${allSelected ? 'Deselect all' : 'Select all'}</button>
+            <span class="bulk-count">${selectedIds.size} selected</span>
+          </div>
+          <div class="bulk-bar-actions">
+            <button class="btn btn-ghost btn-xs" id="bulk-cancel-btn">Cancel</button>
+            <button class="btn btn-xs" id="bulk-delete-btn" style="background:var(--rose);color:#2a0f0f;" ${selectedIds.size ? '' : 'disabled'}>🗑️ Delete${selectedIds.size ? ` ${selectedIds.size}` : ''}</button>
           </div>
         </div>
       ` : (sectionOptions.length ? `<div class="swipe-hint">Swipe an option left to delete</div>` : '')}
@@ -1735,6 +1748,14 @@ function renderPollView(id, opts){
       closeOverlay(closeSelectMode);
     });
 
+    document.getElementById('bulk-select-all-btn')?.addEventListener('click', () => {
+      const allIds = sectionOptions.map(o => o.id);
+      const allCurrentlySelected = allIds.length > 0 && allIds.every(id => selectedIds.has(id));
+      if (allCurrentlySelected) selectedIds.clear();
+      else allIds.forEach(id => selectedIds.add(id));
+      draw();
+    });
+
     document.getElementById('bulk-delete-btn')?.addEventListener('click', () => {
       if (!selectedIds.size) return;
       const chosen = options.filter(o => selectedIds.has(o.id));
@@ -1781,8 +1802,14 @@ function renderPollView(id, opts){
     document.getElementById('toggle-multi-inline')?.addEventListener('click', () => toggleMultiChoice());
 
     document.getElementById('edit-title-btn')?.addEventListener('click', () => {
-      closeOverlay(closeMenu);
-      openEditTitleModal(pollId, pollData.title, pollData.subtitle);
+      // Hand off the menu's overlay slot directly to the edit-title modal
+      // (swap, not close+push) — closing first triggers an async
+      // history.back() that can pop the just-opened modal a tick later,
+      // which is why this used closeOverlay() before and the modal never
+      // stayed open. Same pattern as rename-section-btn below.
+      menuOpen = false;
+      draw();
+      openEditTitleModal(pollId, pollData.title, pollData.subtitle, { swap: true });
     });
 
     document.getElementById('more-menu-btn')?.addEventListener('click', () => {
@@ -2449,7 +2476,7 @@ function renderPollView(id, opts){
   }
 
   /* ---------- edit poll title modal ---------- */
-  function openEditTitleModal(pollId, currentTitle, currentSubtitle){
+  function openEditTitleModal(pollId, currentTitle, currentSubtitle, opts){
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
     backdrop.innerHTML = `
@@ -2467,7 +2494,7 @@ function renderPollView(id, opts){
         </div>
       </div>
     `;
-    openModal(backdrop);
+    openModal(backdrop, opts);
     const input = backdrop.querySelector('#title-input');
     input.focus();
     backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(backdrop); });

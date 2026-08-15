@@ -3,7 +3,7 @@
 // (Network-first, not cache-first: this app is actively iterated on, and a
 // cache-first worker would keep serving a stale version forever once a
 // device had loaded it once, even after a real bug fix ships.)
-const CACHE_NAME = 'youvote-v12';
+const CACHE_NAME = 'youvote-v13';
 const PRECACHE = ['/', '/index.html', '/manifest.json'];
 
 self.addEventListener('install', (event) => {
