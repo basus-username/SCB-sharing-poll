@@ -186,6 +186,25 @@
   .chevron{color:var(--text-muted);}
   .swipe-hint{font-size:11px;color:var(--text-muted);text-align:center;margin:2px 0 4px;opacity:.75;}
 
+  .recent-item-main{flex:1;min-width:0;overflow:hidden;}
+  .recent-item-actions{display:flex;align-items:center;gap:0;flex-shrink:0;}
+  .recent-star-btn,.recent-pin-btn{
+    background:transparent;border:none;color:var(--text-muted);font-size:15px;
+    width:30px;height:30px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+    border-radius:8px;padding:0;opacity:.55;
+  }
+  .recent-star-btn.active{opacity:1;color:var(--gold);}
+  .recent-pin-btn.active{opacity:1;color:var(--violet);}
+  .recent-star-btn:active,.recent-pin-btn:active{background:var(--violet-dim);}
+
+  .home-filter-row{display:flex;gap:8px;margin-bottom:8px;}
+  .home-filter-btn{
+    background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);
+    font-size:12.5px;font-weight:600;padding:7px 14px;border-radius:20px;
+  }
+  .home-filter-btn.active{background:var(--violet-dim);border-color:var(--violet);color:var(--text);}
+  .empty-starred-hint{font-size:12.5px;color:var(--text-muted);text-align:center;padding:20px 10px;}
+
   .section-label{
     font-size:11.5px;text-transform:uppercase;letter-spacing:1.2px;color:var(--text-muted);
     font-weight:700;margin:26px 0 10px;
@@ -195,9 +214,11 @@
   .poll-header{margin-bottom:12px;}
   .poll-title{font-size:21px;margin:0 0 4px;}
   .poll-title-row{
-    position:sticky;top:0;z-index:30;background:var(--bg);
+    position:sticky;top:0;z-index:30;
+    background:linear-gradient(180deg,var(--violet-tint) 0%,var(--bg) 100%);
+    border-bottom:1px solid var(--violet-dim);
     display:flex;align-items:center;gap:8px;
-    margin:0 -16px 0;padding:12px 16px 4px;
+    margin:0 -16px 0;padding:14px 16px 10px;
     box-shadow:0 10px 14px -10px rgba(0,0,0,0.45);
   }
   .poll-title-row .poll-title{margin:0;}
@@ -332,10 +353,10 @@
   .add-option-head h3{margin:0;font-size:14px;font-family:'Inter',sans-serif;font-weight:700;color:var(--violet);}
   .add-collapse-btn{background:transparent;border:none;color:var(--text-muted);font-size:12.5px;font-weight:600;padding:4px;}
   .add-option-card .field{background:var(--surface-2);border-color:var(--violet-dim);}
-  .ai-suggest-row{margin:-10px 0 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .ai-suggest-row{margin:-13px 0 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
   .ai-suggest-btn{
     background:transparent;border:none;color:var(--violet);font-size:12px;font-weight:400;
-    padding:6px 0;text-align:left;
+    padding:2px 0;text-align:left;
   }
   .ai-suggest-btn:active{color:var(--text);}
   .ai-suggest-btn:disabled{opacity:0.6;}
@@ -360,9 +381,36 @@
   }
   .link-clear-btn:active{background:var(--violet-dim);color:var(--text);}
   .add-link-btn{
-    background:transparent;border:none;color:var(--violet);font-size:12px;font-weight:500;
+    background:transparent;border:none;color:var(--violet);font-size:12px;font-weight:400;
     padding:6px 0 22px;text-align:left;display:block;
   }
+
+  /* ---------- small inline clear (✕) for text fields — minimal, sits
+     inside the field itself rather than the bulkier link-clear-btn box ---------- */
+  .field-wrap{position:relative;}
+  .field-wrap .field-clearable{padding-right:34px;}
+  .field-x{
+    position:absolute;right:5px;top:50%;transform:translateY(-50%);
+    width:22px;height:22px;border:none;background:transparent;color:var(--text-muted);
+    font-size:12px;line-height:1;padding:0;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;opacity:.55;
+  }
+  .field-x:active{background:var(--violet-dim);color:var(--text);opacity:1;}
+  .field-x-textarea{top:12px;transform:none;}
+
+  /* ---------- collapsible notes field — collapsed by default so the
+     "Add to poll" button doesn't sit a scroll away; only expands when
+     tapped, or already has content (edit modal) ---------- */
+  .notes-toggle-btn{
+    background:transparent;border:none;color:var(--text-muted);font-size:12.5px;font-weight:600;
+    padding:4px 0 8px;text-align:left;display:flex;align-items:center;gap:5px;width:100%;
+  }
+  .notes-toggle-btn:active{color:var(--violet);}
+  .notes-toggle-chevron{display:inline-block;transition:transform .15s ease;font-size:13px;}
+  .notes-toggle-btn.expanded .notes-toggle-chevron{transform:rotate(90deg);}
+  .notes-wrap{max-height:0;overflow:hidden;transition:max-height .2s ease;}
+  .notes-wrap.expanded{max-height:220px;}
+  .notes-wrap .field-wrap{margin-top:2px;}
   .extra-link-row{display:flex;gap:6px;align-items:stretch;margin-bottom:10px;}
   .extra-link-row .field{margin-bottom:0;flex:1;min-width:0;}
   #extra-links-wrap:not(:empty){margin-top:12px;}
@@ -537,6 +585,7 @@ const $toast = document.getElementById('toast');
    event at all (Apple has no equivalent API), so it gets its own
    instructions instead of a button. */
 let deferredInstallPrompt = null;
+let homeFilter = 'all'; // 'all' | 'starred' — persists across re-renders of the home screen
 function isStandaloneMode(){
   return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 }
@@ -846,13 +895,38 @@ function getRecents(){
   try { return JSON.parse(localStorage.getItem('poll_recents') || '[]'); } catch { return []; }
 }
 function addRecent(id, title){
+  const existing = getRecents().find(p => p.id === id);
   const list = getRecents().filter(p => p.id !== id);
-  list.unshift({ id, title, ts: Date.now() });
+  list.unshift({ id, title, ts: Date.now(), pinned: existing?.pinned || false, starred: existing?.starred || false });
   localStorage.setItem('poll_recents', JSON.stringify(list.slice(0, 12)));
 }
 function removeRecent(id){
   const list = getRecents().filter(p => p.id !== id);
   localStorage.setItem('poll_recents', JSON.stringify(list));
+}
+
+/* ---------- pin (reorder to top, like WhatsApp) and star (separate
+   "Starred" filter, doesn't reorder) — two distinct, independent flags
+   per poll, both device-local since the recents list itself is
+   device-local. ---------- */
+function togglePinRecent(id){
+  const list = getRecents();
+  const item = list.find(p => p.id === id);
+  if (!item) return;
+  item.pinned = !item.pinned;
+  localStorage.setItem('poll_recents', JSON.stringify(list));
+}
+function toggleStarRecent(id){
+  const list = getRecents();
+  const item = list.find(p => p.id === id);
+  if (!item) return;
+  item.starred = !item.starred;
+  localStorage.setItem('poll_recents', JSON.stringify(list));
+}
+// Pinned polls float to the top (stable sort keeps everything else in its
+// existing most-recent-first order) — same mental model as pinning a chat.
+function sortRecentsForDisplay(list){
+  return [...list].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
 }
 
 /* ---------- local option-name suggestions (free, instant, works offline) ----------
@@ -1118,20 +1192,32 @@ function renderHome(){
 
     ${recents.length ? `
       <div class="section-label">Recent polls on this device</div>
+      <div class="home-filter-row">
+        <button type="button" class="home-filter-btn ${homeFilter === 'all' ? 'active' : ''}" data-home-filter="all">All</button>
+        <button type="button" class="home-filter-btn ${homeFilter === 'starred' ? 'active' : ''}" data-home-filter="starred">⭐ Starred</button>
+      </div>
       <div class="swipe-hint">Swipe a poll left to delete</div>
       <div class="recent-list">
-        ${recents.map(r => `
+        ${(() => {
+          const shown = sortRecentsForDisplay(homeFilter === 'starred' ? recents.filter(r => r.starred) : recents);
+          if (!shown.length) return `<div class="empty-starred-hint">No starred polls yet — tap ☆ on a poll to pin it here.</div>`;
+          return shown.map(r => `
           <div class="swipe-wrap">
             <button class="swipe-delete" data-swipe-delete="${r.id}" data-swipe-title="${escapeHtml(r.title)}" aria-label="Delete poll">🗑️</button>
             <a class="recent-item" data-recent-id="${r.id}" href="?poll=${r.id}" draggable="false">
-              <div>
-                <div class="recent-item-title">${escapeHtml(r.title)}</div>
+              <div class="recent-item-main">
+                <div class="recent-item-title">${r.pinned ? '📌 ' : ''}${escapeHtml(r.title)}</div>
                 <div class="recent-item-meta">${new Date(r.ts).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</div>
+              </div>
+              <div class="recent-item-actions">
+                <button type="button" class="recent-star-btn ${r.starred ? 'active' : ''}" data-star-toggle="${r.id}" aria-label="${r.starred ? 'Unstar poll' : 'Star poll'}">${r.starred ? '⭐' : '☆'}</button>
+                <button type="button" class="recent-pin-btn ${r.pinned ? 'active' : ''}" data-pin-toggle="${r.id}" aria-label="${r.pinned ? 'Unpin poll' : 'Pin poll'}">📌</button>
               </div>
               <span class="chevron">›</span>
             </a>
           </div>
-        `).join('')}
+        `).join('');
+        })()}
       </div>
     ` : ''}
   `;
@@ -1180,6 +1266,27 @@ function renderHome(){
   document.getElementById('home-paste-links-btn').addEventListener('click', () => {
     openPasteLinksModal((links, contextByUrl) => {
       handleIncomingShare(links, contextByUrl);
+    });
+  });
+
+  document.querySelectorAll('[data-home-filter]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      homeFilter = btn.getAttribute('data-home-filter');
+      renderHome();
+    });
+  });
+  document.querySelectorAll('[data-star-toggle]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      toggleStarRecent(btn.getAttribute('data-star-toggle'));
+      renderHome();
+    });
+  });
+  document.querySelectorAll('[data-pin-toggle]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      togglePinRecent(btn.getAttribute('data-pin-toggle'));
+      renderHome();
     });
   });
 
@@ -1362,6 +1469,7 @@ function renderPollView(id, opts){
   let draftName = '';
   let draftLink = prefillLink;
   let draftThumbnail = null;
+  let notesExpanded = false;
   let pendingAutoResolve = !!prefillLink;
   let pendingBatchAdd = !!pendingBatchLinks;
   const expandedIds = new Set();
@@ -1590,7 +1698,7 @@ function renderPollView(id, opts){
       ` : ''}
 
       ${addExpanded
-        ? addOptionCardHtml(addTab, calState, draftName, draftLink)
+        ? addOptionCardHtml(addTab, calState, draftName, draftLink, notesExpanded)
         : `
           <div class="add-row">
             <button class="add-toggle-btn" id="add-toggle-btn">＋ ${sectioned && activeSection ? `Add to ${escapeHtml(activeSection.name)}` : 'Add an option'}</button>
@@ -1967,6 +2075,24 @@ function renderPollView(id, opts){
       const linkInput = document.getElementById('opt-link');
       nameInput?.addEventListener('input', () => { draftName = nameInput.value; });
       linkInput?.addEventListener('input', () => { draftLink = linkInput.value; });
+      document.getElementById('notes-toggle-btn')?.addEventListener('click', () => {
+        notesExpanded = !notesExpanded;
+        const btn = document.getElementById('notes-toggle-btn');
+        const wrap = document.getElementById('notes-wrap');
+        btn.classList.toggle('expanded', notesExpanded);
+        btn.setAttribute('aria-expanded', notesExpanded ? 'true' : 'false');
+        wrap.classList.toggle('expanded', notesExpanded);
+        if (notesExpanded) document.getElementById('opt-notes')?.focus();
+      });
+      document.querySelectorAll('.field-x[data-clear]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const target = document.getElementById(btn.getAttribute('data-clear'));
+          if (!target) return;
+          target.value = '';
+          if (target.id === 'opt-name') draftName = '';
+          target.focus();
+        });
+      });
       document.getElementById('ai-suggest-btn')?.addEventListener('click', async () => {
         const btn = document.getElementById('ai-suggest-btn');
         const resultsEl = document.getElementById('ai-suggest-results');
@@ -1982,7 +2108,12 @@ function renderPollView(id, opts){
               // strongest signal for what a suggestion should actually be —
               // without it, suggestions only reflect the overall poll title.
               sectionName: sectioned && activeSection ? activeSection.name : null,
-              existingNames: options.map(o => o.name),
+              // Folding each option's notes in alongside its name (not just
+              // the bare name) gives the AI real style/context to match —
+              // e.g. "Zus Coffee (good for groups, has parking)" steers
+              // suggestions toward similarly group-friendly spots, not just
+              // "another coffee place".
+              existingNames: options.map(o => o.notes ? `${o.name} (${o.notes})` : o.name),
             }),
           });
           // Read as text first, not r.json() directly — a crashed/misrouted
@@ -2405,7 +2536,10 @@ function renderPollView(id, opts){
         <h3>Edit option</h3>
         <p>Changes update live for everyone.</p>
         <label class="field-label">Name</label>
-        <input id="edit-name" class="field" placeholder="Option name" value="${escapeHtml(opt.name)}" />
+        <div class="field-wrap">
+          <input id="edit-name" class="field field-clearable" placeholder="Option name" value="${escapeHtml(opt.name)}" />
+          <button type="button" class="field-x" data-clear="edit-name" aria-label="Clear name">✕</button>
+        </div>
         <label class="field-label">Reference link(s)</label>
         <p class="field-label-sub">Optional</p>
         <div id="edit-links-wrap">
@@ -2417,9 +2551,15 @@ function renderPollView(id, opts){
           `).join('')}
         </div>
         <button type="button" id="edit-add-link-btn" class="add-link-btn">＋ Add another link</button>
-        <label class="field-label">Notes</label>
-        <p class="field-label-sub">Optional</p>
-        <textarea id="edit-notes" class="field" placeholder="e.g. good for groups, must book ahead">${escapeHtml(opt.notes||'')}</textarea>
+        <button type="button" id="edit-notes-toggle-btn" class="notes-toggle-btn ${opt.notes ? 'expanded' : ''}" aria-expanded="${opt.notes ? 'true' : 'false'}">
+          <span class="notes-toggle-chevron">›</span> Notes (optional)
+        </button>
+        <div id="edit-notes-wrap" class="notes-wrap ${opt.notes ? 'expanded' : ''}">
+          <div class="field-wrap">
+            <textarea id="edit-notes" class="field field-clearable" placeholder="e.g. good for groups, must book ahead">${escapeHtml(opt.notes||'')}</textarea>
+            <button type="button" class="field-x field-x-textarea" data-clear="edit-notes" aria-label="Clear notes">✕</button>
+          </div>
+        </div>
         <div style="display:flex;gap:10px;">
           <button class="btn btn-ghost" id="edit-cancel" style="flex:1">Cancel</button>
           <button class="btn btn-primary" id="edit-save" style="flex:1">Save</button>
@@ -2431,6 +2571,23 @@ function renderPollView(id, opts){
     backdrop.querySelector('#edit-cancel').addEventListener('click', () => closeModal(backdrop));
     backdrop.querySelectorAll('.extra-link-row .link-clear-btn').forEach(btn => {
       btn.addEventListener('click', () => btn.closest('.extra-link-row').remove());
+    });
+    backdrop.querySelector('#edit-notes-toggle-btn').addEventListener('click', () => {
+      const btn = backdrop.querySelector('#edit-notes-toggle-btn');
+      const wrap = backdrop.querySelector('#edit-notes-wrap');
+      const expanded = !btn.classList.contains('expanded');
+      btn.classList.toggle('expanded', expanded);
+      btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      wrap.classList.toggle('expanded', expanded);
+      if (expanded) backdrop.querySelector('#edit-notes')?.focus();
+    });
+    backdrop.querySelectorAll('.field-x[data-clear]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = backdrop.querySelector(`#${btn.getAttribute('data-clear')}`);
+        if (!target) return;
+        target.value = '';
+        target.focus();
+      });
     });
     backdrop.querySelector('#edit-add-link-btn').addEventListener('click', () => {
       const wrap = backdrop.querySelector('#edit-links-wrap');
@@ -2610,9 +2767,11 @@ async function renderResultsBlob(pollData, options){
   const H = HEADER_H + rows * ROW_H + FOOTER_H + PAD;
 
   const canvas = document.createElement('canvas');
-  const scale = 3; // 3x for sharp, HD-quality text when shared/screenshotted on a phone
+  const scale = 4; // 4x for crisp, HD text even when zoomed in after sharing to WhatsApp
   canvas.width = W * scale; canvas.height = H * scale;
   const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   ctx.scale(scale, scale);
 
   const bg = '#141319', surface = '#1E1C27', border = '#4E4768', text = '#F5F3FA',
@@ -2839,7 +2998,7 @@ function optionLinks(opt){
   return legacy ? [legacy] : [];
 }
 
-function addOptionCardHtml(addTab, calState, draftName, draftLink){
+function addOptionCardHtml(addTab, calState, draftName, draftLink, notesExpanded){
   return `
     <div class="card add-option-card">
       <div class="add-option-head">
@@ -2851,15 +3010,18 @@ function addOptionCardHtml(addTab, calState, draftName, draftLink){
         <button class="tab-btn ${addTab === 'date' ? 'active' : ''}" data-add-tab="date">Pick dates</button>
         <button class="tab-btn" data-add-tab="links" title="Paste links copied from WhatsApp">Paste links</button>
       </div>
-      ${addTab === 'text' ? textOptionFormHtml(draftName, draftLink) : calendarPickerHtml(calState)}
+      ${addTab === 'text' ? textOptionFormHtml(draftName, draftLink, notesExpanded) : calendarPickerHtml(calState)}
     </div>
   `;
 }
 
-function textOptionFormHtml(draftName, draftLink){
+function textOptionFormHtml(draftName, draftLink, notesExpanded){
   return `
     <label class="field-label">Name</label>
-    <input id="opt-name" class="field" placeholder="Option name" list="option-name-suggestions" value="${escapeHtml(draftName || '')}" />
+    <div class="field-wrap">
+      <input id="opt-name" class="field field-clearable" placeholder="Option name" list="option-name-suggestions" value="${escapeHtml(draftName || '')}" />
+      <button type="button" class="field-x" data-clear="opt-name" aria-label="Clear name">✕</button>
+    </div>
     ${optionNameDatalistHtml()}
     <div class="ai-suggest-row">
       <button type="button" id="ai-suggest-btn" class="ai-suggest-btn">✨ Suggest options</button>
@@ -2874,8 +3036,15 @@ function textOptionFormHtml(draftName, draftLink){
     <p class="autofill-status" id="resolve-status"></p>
     <div id="extra-links-wrap"></div>
     <button type="button" id="add-link-btn" class="add-link-btn">＋ Add another link</button>
-    <label class="field-label">Notes (optional)</label>
-    <textarea id="opt-notes" class="field" placeholder="e.g. good for groups, must book ahead"></textarea>
+    <button type="button" id="notes-toggle-btn" class="notes-toggle-btn ${notesExpanded ? 'expanded' : ''}" aria-expanded="${notesExpanded ? 'true' : 'false'}">
+      <span class="notes-toggle-chevron">›</span> Notes (optional)
+    </button>
+    <div id="notes-wrap" class="notes-wrap ${notesExpanded ? 'expanded' : ''}">
+      <div class="field-wrap">
+        <textarea id="opt-notes" class="field field-clearable" placeholder="e.g. good for groups, must book ahead"></textarea>
+        <button type="button" class="field-x field-x-textarea" data-clear="opt-notes" aria-label="Clear notes">✕</button>
+      </div>
+    </div>
     <button id="add-option-btn" class="btn btn-primary">Add to poll</button>
   `;
 }
