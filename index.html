@@ -176,6 +176,7 @@
     background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);
     padding:13px 15px;text-decoration:none;color:var(--text);
     touch-action:pan-y;will-change:transform;
+    -webkit-user-drag:none;user-select:none;-webkit-touch-callout:none;
   }
   .recent-item-title{font-weight:600;font-size:14.5px;}
   .recent-item-meta{font-size:12px;color:var(--text-muted);margin-top:2px;}
@@ -1014,7 +1015,7 @@ function renderHome(){
         ${recents.map(r => `
           <div class="swipe-wrap">
             <button class="swipe-delete" data-swipe-delete="${r.id}" data-swipe-title="${escapeHtml(r.title)}" aria-label="Delete poll">🗑️</button>
-            <a class="recent-item" data-recent-id="${r.id}" href="?poll=${r.id}">
+            <a class="recent-item" data-recent-id="${r.id}" href="?poll=${r.id}" draggable="false">
               <div>
                 <div class="recent-item-title">${escapeHtml(r.title)}</div>
                 <div class="recent-item-meta">${new Date(r.ts).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</div>
