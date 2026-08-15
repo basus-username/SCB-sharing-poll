@@ -380,6 +380,47 @@
   }
   .tab-btn.active{background:var(--violet);border-color:var(--violet);color:#fff;}
 
+  /* ---------- poll sections (e.g. "Dates" + "Food" tabs in one poll) ----------
+     A separate variant from .tab-row/.tab-btn above (used by the add-option
+     panel's Text/Date toggle) because section tabs are sized-to-content and
+     horizontally scrollable rather than flex:1 — with up to 5 sections,
+     evenly-stretched tabs would get uncomfortably narrow to tap. Only
+     rendered at all when a poll actually has sections, so a plain poll
+     looks exactly as it always did. */
+  .section-tab-row{
+    display:flex;gap:7px;margin-bottom:14px;overflow-x:auto;padding-bottom:2px;
+    scrollbar-width:none;-webkit-overflow-scrolling:touch;touch-action:pan-x;
+  }
+  .section-tab-row::-webkit-scrollbar{display:none;}
+  .section-tab-btn{
+    flex:0 0 auto;background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);
+    padding:9px 15px;border-radius:20px;font-size:13px;font-weight:700;white-space:nowrap;
+  }
+  .section-tab-btn.active{background:var(--violet);border-color:var(--violet);color:#fff;}
+  .section-tab-add{
+    flex:0 0 auto;background:transparent;border:1.5px dashed var(--violet-dim);color:var(--violet);
+    padding:9px 13px;border-radius:20px;font-size:13px;font-weight:700;
+  }
+  .section-tab-add:active{background:var(--violet-dim);}
+
+  /* ---------- section builder (home screen create card + add/rename modal) ----------
+     Deliberately understated: a small text link rather than a prominent
+     button, since most polls won't use sections at all — this keeps the
+     default single-poll flow exactly as clutter-free as before. */
+  .add-section-link{
+    background:transparent;border:none;color:var(--violet);font-size:12.5px;font-weight:700;
+    padding:0 0 14px;text-align:left;display:block;
+  }
+  .section-builder-row{display:flex;gap:6px;align-items:stretch;margin-bottom:10px;}
+  .section-builder-row .field{margin-bottom:0;flex:1;min-width:0;}
+  .section-type-toggle{
+    flex-shrink:0;background:var(--surface-2);border:1.5px solid var(--border);color:var(--text-muted);
+    border-radius:var(--radius-sm);padding:0 11px;font-size:11.5px;font-weight:700;white-space:nowrap;
+  }
+  .section-type-toggle.active{border-color:var(--violet);color:var(--violet);}
+  #section-builder-wrap:not(:empty){margin-top:2px;}
+  .section-cap-note{font-size:11px;color:var(--text-muted);margin:-4px 0 12px;}
+
   .cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
   .cal-month{font-weight:700;font-size:13.5px;}
   .cal-weekdays{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;color:var(--text-muted);font-size:10.5px;text-align:center;margin-bottom:6px;}
@@ -699,6 +740,55 @@ function genPollId(title){
 }
 const WEEKDAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+/* =========================================================
+   POLL SECTIONS (e.g. "Dates" + "Food" tabs within one poll)
+   A poll with no sections behaves exactly as before — sections are purely
+   opt-in, so a plain single-topic poll never shows a tab row or any
+   section UI at all.
+   ========================================================= */
+const MAX_SECTIONS = 5;
+function hasSections(pollData){
+  return !!(pollData && pollData.sections && Object.keys(pollData.sections).length);
+}
+function sectionListOf(pollData){
+  if (!hasSections(pollData)) return [];
+  return Object.entries(pollData.sections)
+    .map(([id, s]) => ({ id, ...s }))
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+/* One row of the section builder used by both the home-screen create card
+   and the "Add a section" modal on an existing poll — same markup, same
+   read-back logic, so the two flows can't quietly drift apart. */
+function sectionBuilderRowHtml(name = '', multiChoice = false){
+  return `
+    <div class="section-builder-row" data-section-row>
+      <input class="field section-name-input" placeholder="Section name, e.g. Dates" maxlength="30" value="${escapeHtml(name)}" />
+      <button type="button" class="section-type-toggle" data-section-multi="${multiChoice ? '1' : '0'}">${multiChoice ? 'Multiple' : 'Single'}</button>
+      <button type="button" class="link-clear-btn" data-remove-section-row aria-label="Remove section">✕</button>
+    </div>
+  `;
+}
+function bindSectionBuilderRow(row){
+  const toggle = row.querySelector('[data-section-multi]');
+  toggle.classList.toggle('active', toggle.getAttribute('data-section-multi') === '1');
+  toggle.addEventListener('click', () => {
+    const isMulti = toggle.getAttribute('data-section-multi') === '1';
+    toggle.setAttribute('data-section-multi', isMulti ? '0' : '1');
+    toggle.textContent = isMulti ? 'Single' : 'Multiple';
+    toggle.classList.toggle('active', !isMulti);
+  });
+  row.querySelector('[data-remove-section-row]').addEventListener('click', () => row.remove());
+}
+/* Reads whatever section rows are currently in the builder (home screen or
+   the "Add a section" modal) into a plain array, skipping blank names —
+   an unnamed row is treated as "not filled in yet", not an error. */
+function readSectionBuilderRows(wrap){
+  return Array.from(wrap.querySelectorAll('[data-section-row]')).map(row => ({
+    name: row.querySelector('.section-name-input').value.trim(),
+    multiChoice: row.querySelector('[data-section-multi]').getAttribute('data-section-multi') === '1',
+  })).filter(s => s.name);
+}
 function formatDateOption(iso){
   const d = new Date(iso + 'T00:00:00');
   return `${d.getDate()} ${MONTHS[d.getMonth()]}, ${WEEKDAYS[d.getDay()]}`;
@@ -958,13 +1048,15 @@ async function resolveNameForLink(link, context){
   return base;
 }
 
-async function batchAddLinksAsOptions(pollId, links, contextByUrl){
+async function batchAddLinksAsOptions(pollId, links, contextByUrl, sectionId){
   const names = await Promise.all(links.map(async (link) => {
     const { name, url, thumbnail } = await resolveNameForLink(link, contextByUrl && contextByUrl[link]);
-    await addDoc(collection(db, 'polls', pollId, 'options'), {
+    const payload = {
       name, notes: '', link: url, links: [url], thumbnail: thumbnail || null,
       isDate: false, votes: {}, createdAt: serverTimestamp()
-    });
+    };
+    if (sectionId) payload.sectionId = sectionId;
+    await addDoc(collection(db, 'polls', pollId, 'options'), payload);
     return name;
   }));
   return names;
@@ -1004,6 +1096,8 @@ function renderHome(){
     <div class="card">
       <label class="field-label" for="new-title">Poll title</label>
       <input id="new-title" class="field" placeholder="e.g. Next outing?" maxlength="60" />
+      <button type="button" class="add-section-link" id="add-section-link">🏷️ Add a section (e.g. separate Dates + Food voting)</button>
+      <div id="section-builder-wrap"></div>
       <button id="create-btn" class="btn btn-primary">Create poll</button>
       <button id="home-paste-links-btn" class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px;">📋 Paste from WhatsApp</button>
     </div>
@@ -1028,17 +1122,38 @@ function renderHome(){
     ` : ''}
   `;
 
+  const sectionBuilderWrap = document.getElementById('section-builder-wrap');
+  const addSectionLink = document.getElementById('add-section-link');
+  function addHomeSectionRow(){
+    if (sectionBuilderWrap.children.length >= MAX_SECTIONS) return;
+    const div = document.createElement('div');
+    div.innerHTML = sectionBuilderRowHtml();
+    const row = div.firstElementChild;
+    sectionBuilderWrap.appendChild(row);
+    bindSectionBuilderRow(row);
+    row.querySelector('.section-name-input').focus();
+    if (sectionBuilderWrap.children.length >= MAX_SECTIONS) addSectionLink.style.display = 'none';
+  }
+  addSectionLink.addEventListener('click', addHomeSectionRow);
+
   document.getElementById('create-btn').addEventListener('click', async () => {
     const titleInput = document.getElementById('new-title');
     const title = titleInput.value.trim();
     if (!title) { titleInput.focus(); return; }
+    const sectionRows = readSectionBuilderRows(sectionBuilderWrap);
     const btn = document.getElementById('create-btn');
     btn.disabled = true; btn.textContent = 'Creating…';
     try {
       const id = genPollId(title);
-      await setDoc(doc(db, 'polls', id), {
-        title, createdAt: serverTimestamp(), closed: false, multiChoice: false
-      });
+      const pollDoc = { title, createdAt: serverTimestamp(), closed: false, multiChoice: false };
+      if (sectionRows.length) {
+        const sections = {};
+        sectionRows.forEach((s, i) => {
+          sections[`sec_${genId(6)}`] = { name: s.name, multiChoice: s.multiChoice, order: i };
+        });
+        pollDoc.sections = sections;
+      }
+      await setDoc(doc(db, 'polls', id), pollDoc);
       addRecent(id, title);
       location.href = `?poll=${id}`;
     } catch (e) {
@@ -1240,6 +1355,15 @@ function renderPollView(id, opts){
   let selectMode = false;
   const selectedIds = new Set();
   const calState = { month: new Date(new Date().getFullYear(), new Date().getMonth(), 1), selected: new Set() };
+  // Which section tab is showing (null for a plain, non-sectioned poll).
+  // Validated/defaulted to the first section every time fresh poll data
+  // arrives — see the onSnapshot(pollRef) callback below — so a deleted
+  // or not-yet-loaded section id can never leave this pointing nowhere.
+  let activeSectionId = null;
+  // Swipe-to-switch-section tracking for the section tab row specifically
+  // (separate from the per-option swipe-to-delete below it, which uses its
+  // own pointer-capture logic on each row — this only watches the tab strip).
+  let tabTouchStartX = 0, tabTouchStartY = 0, tabTouchActive = false;
 
   /* ---------- back-button-closable state for this poll's overlays ---------- */
   function closeMenu(){
@@ -1343,6 +1467,12 @@ function renderPollView(id, opts){
     }
     pollData = snap.data();
     addRecent(id, pollData.title);
+    if (hasSections(pollData)) {
+      const list = sectionListOf(pollData);
+      if (!activeSectionId || !list.some(s => s.id === activeSectionId)) activeSectionId = list[0].id;
+    } else {
+      activeSectionId = null;
+    }
     draw();
     if (pendingAutoResolve) {
       pendingAutoResolve = false;
@@ -1351,7 +1481,7 @@ function renderPollView(id, opts){
     }
     if (pendingBatchAdd) {
       pendingBatchAdd = false;
-      batchAddLinksAsOptions(id, pendingBatchLinks, pendingLinkContext).then((names) => {
+      batchAddLinksAsOptions(id, pendingBatchLinks, pendingLinkContext, activeSectionId).then((names) => {
         toast(`Added ${names.length} link${names.length===1?'':'s'} — check names below, edit any that need fixing`);
       }).catch((e) => {
         toast(`Some links couldn't be added: ${e.message || 'unknown error'}`);
@@ -1376,10 +1506,19 @@ function renderPollView(id, opts){
   function draw(){
     if (!pollData) return;
     const voter = getVoter();
+    const sectioned = hasSections(pollData);
+    const sections = sectioned ? sectionListOf(pollData) : [];
+    // A plain poll behaves exactly as before: sectionOptions === options.
+    // A sectioned poll only ever shows/votes-on the active tab's options —
+    // everything below (counts, empty state, the option list itself) reads
+    // from sectionOptions, never the full cross-section list.
+    const sectionOptions = sectioned ? options.filter(o => o.sectionId === activeSectionId) : options;
+    const activeSection = sectioned ? sections.find(s => s.id === activeSectionId) : null;
+    const activeMultiChoice = sectioned ? !!(activeSection && activeSection.multiChoice) : !!pollData.multiChoice;
     // options stay in creation order — never re-sorted by vote count, so
     // rows don't jump around as people vote. "Leading" is still highlighted.
-    const topCount = options.length ? Math.max(...options.map(voteCount)) : 0;
-    const totalVotes = options.reduce((sum, o) => sum + voteCount(o), 0);
+    const topCount = sectionOptions.length ? Math.max(...sectionOptions.map(voteCount)) : 0;
+    const totalVotes = sectionOptions.reduce((sum, o) => sum + voteCount(o), 0);
 
     $app.innerHTML = `
       <div class="topbar">
@@ -1405,9 +1544,9 @@ function renderPollView(id, opts){
         ${pollData.subtitle ? `<div class="poll-subtitle">${escapeHtml(pollData.subtitle)}</div>` : ''}
         <div class="poll-meta-row">
           <div class="poll-meta">
-            <span>${options.length} option${options.length===1?'':'s'}</span>
+            <span>${sectionOptions.length} option${sectionOptions.length===1?'':'s'}</span>
             <span>·</span>
-            <button class="meta-toggle" id="toggle-multi-inline" title="Tap to switch voting mode">${pollData.multiChoice ? 'Multiple choice' : 'Single choice'}</button>
+            <button class="meta-toggle" id="toggle-multi-inline" title="Tap to switch voting mode">${activeMultiChoice ? 'Multiple choice' : 'Single choice'}</button>
           </div>
           <div class="chip-row">
             <button class="chip chip-icon-only" id="share-btn" title="Copy share link" aria-label="Copy share link">🔗</button>
@@ -1417,24 +1556,35 @@ function renderPollView(id, opts){
         </div>
         ${menuOpen ? `
           <div class="menu-popover" id="more-menu">
-            <button class="menu-item" id="copy-results-btn">📋 Copy results</button>
+            <button class="menu-item" id="copy-results-btn">${sectioned ? '📋 Share results' : '📋 Copy results'}</button>
             <button class="menu-item" id="merge-identity-btn">🙋 Claim votes from a previous name</button>
+            ${sectioned
+              ? `<button class="menu-item" id="rename-section-btn">✏️ Rename "${escapeHtml(activeSection ? activeSection.name : '')}"</button>`
+              : `<button class="menu-item" id="add-first-section-btn">🏷️ Add a section</button>`
+            }
             <button class="menu-item" id="bulk-select-btn">☑️ Select options to delete</button>
           </div>
         ` : ''}
       </div>
 
+      ${sectioned ? `
+        <div class="section-tab-row" id="section-tab-row">
+          ${sections.map(s => `<button type="button" class="section-tab-btn ${s.id === activeSectionId ? 'active' : ''}" data-section-tab="${s.id}">${escapeHtml(s.name)}</button>`).join('')}
+          ${sections.length < MAX_SECTIONS ? `<button type="button" class="section-tab-add" id="section-tab-add" aria-label="Add a section">＋</button>` : ''}
+        </div>
+      ` : ''}
+
       ${addExpanded
         ? addOptionCardHtml(addTab, calState, draftName, draftLink)
         : `
           <div class="add-row">
-            <button class="add-toggle-btn" id="add-toggle-btn">＋ Add an option</button>
+            <button class="add-toggle-btn" id="add-toggle-btn">＋ ${sectioned && activeSection ? `Add to ${escapeHtml(activeSection.name)}` : 'Add an option'}</button>
             <button class="add-toggle-btn" id="paste-links-btn" title="Paste links copied from WhatsApp">📋 Paste links</button>
           </div>
         `
       }
 
-      ${options.length === 0 ? `<div class="empty-state">No options yet — add the first one above.</div>` : ''}
+      ${sectionOptions.length === 0 ? `<div class="empty-state">${sectioned && activeSection ? `No options in "${escapeHtml(activeSection.name)}" yet — add the first one above.` : 'No options yet — add the first one above.'}</div>` : ''}
 
       ${selectMode ? `
         <div class="bulk-bar">
@@ -1444,9 +1594,9 @@ function renderPollView(id, opts){
             <button class="btn btn-sm" id="bulk-delete-btn" style="background:var(--rose);color:#2a0f0f;" ${selectedIds.size ? '' : 'disabled'}>🗑️ Delete ${selectedIds.size || ''}</button>
           </div>
         </div>
-      ` : (options.length ? `<div class="swipe-hint">Swipe an option left to delete</div>` : '')}
+      ` : (sectionOptions.length ? `<div class="swipe-hint">Swipe an option left to delete</div>` : '')}
 
-      ${options.map(opt => selectMode ? `
+      ${sectionOptions.map(opt => selectMode ? `
         ${optionCardHtml(opt, voter, totalVotes, voteCount(opt)===topCount && topCount>0, expandedIds.has(opt.id), true, selectedIds.has(opt.id))}
       ` : `
         <div class="swipe-wrap-option">
@@ -1464,6 +1614,15 @@ function renderPollView(id, opts){
   }
 
   function bindPollEvents(pollId, pollData, options, voter){
+    // Recomputed here (not passed in) so voting/add-option logic below always
+    // scopes to whichever section tab is currently active — see draw()'s
+    // matching computation, which this must stay consistent with.
+    const sectioned = hasSections(pollData);
+    const sections = sectioned ? sectionListOf(pollData) : [];
+    const sectionOptions = sectioned ? options.filter(o => o.sectionId === activeSectionId) : options;
+    const activeSection = sectioned ? sections.find(s => s.id === activeSectionId) : null;
+    const activeMultiChoice = sectioned ? !!(activeSection && activeSection.multiChoice) : !!pollData.multiChoice;
+
     document.getElementById('poll-undo-fab')?.addEventListener('click', performUndo);
     document.getElementById('poll-redo-fab')?.addEventListener('click', performRedo);
     const setVoterBtn = document.getElementById('set-voter-btn');
@@ -1498,7 +1657,7 @@ function renderPollView(id, opts){
       openPasteLinksModal(async (links, contextByUrl) => {
         toast(`Adding ${links.length} link${links.length===1?'':'s'}…`);
         try {
-          const names = await batchAddLinksAsOptions(pollId, links, contextByUrl);
+          const names = await batchAddLinksAsOptions(pollId, links, contextByUrl, sectioned ? activeSectionId : undefined);
           toast(`Added ${names.length} option${names.length===1?'':'s'} — check names below`);
         } catch (e) {
           toast(`Could not add links: ${e.message || 'unknown error'}`);
@@ -1506,6 +1665,58 @@ function renderPollView(id, opts){
         }
       });
     });
+
+    document.querySelectorAll('[data-section-tab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const sid = btn.getAttribute('data-section-tab');
+        if (sid === activeSectionId) return;
+        activeSectionId = sid;
+        draw();
+      });
+    });
+
+    document.getElementById('section-tab-add')?.addEventListener('click', () => {
+      openSectionModal(pollId, pollData, options, null, (newId) => { activeSectionId = newId; });
+    });
+
+    document.getElementById('add-first-section-btn')?.addEventListener('click', () => {
+      menuOpen = false;
+      draw();
+      openSectionModal(pollId, pollData, options, null, (newId) => { activeSectionId = newId; }, { swap: true });
+    });
+
+    document.getElementById('rename-section-btn')?.addEventListener('click', () => {
+      menuOpen = false;
+      draw();
+      if (activeSection) openSectionModal(pollId, pollData, options, activeSection, null, { swap: true });
+    });
+
+    /* ---------- swipe left/right on the section tab strip to switch tabs ----------
+       Deliberately scoped to just the tab row (not the whole page or the
+       option list below) so it can never fight with the per-option
+       swipe-to-delete gesture, which has its own well-tuned pointer-capture
+       logic on each row. */
+    const tabRow = document.getElementById('section-tab-row');
+    if (tabRow && sections.length > 1) {
+      tabRow.addEventListener('touchstart', (e) => {
+        const t = e.touches[0];
+        tabTouchStartX = t.clientX; tabTouchStartY = t.clientY; tabTouchActive = true;
+      }, { passive: true });
+      tabRow.addEventListener('touchend', (e) => {
+        if (!tabTouchActive) return;
+        tabTouchActive = false;
+        const t = e.changedTouches[0];
+        const dx = t.clientX - tabTouchStartX;
+        const dy = t.clientY - tabTouchStartY;
+        if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy) * 1.5) return; // not a clear horizontal swipe
+        const idx = sections.findIndex(s => s.id === activeSectionId);
+        if (idx === -1) return;
+        const nextIdx = dx < 0 ? idx + 1 : idx - 1; // swipe left → next section, right → previous
+        if (nextIdx < 0 || nextIdx >= sections.length) return;
+        activeSectionId = sections[nextIdx].id;
+        draw();
+      }, { passive: true });
+    }
 
     document.getElementById('bulk-select-btn')?.addEventListener('click', () => {
       menuOpen = false;
@@ -1529,7 +1740,10 @@ function renderPollView(id, opts){
 
     document.getElementById('copy-results-btn')?.addEventListener('click', () => {
       closeOverlay(closeMenu);
-      copyResultsAsImage(pollData, options);
+      // Always the FULL options list here, never sectionOptions — results
+      // export covers every section at once (one image per section), not
+      // just whichever tab happens to be open right now.
+      shareOrCopyResults(pollData, options);
     });
 
     document.getElementById('merge-identity-btn')?.addEventListener('click', () => {
@@ -1538,14 +1752,22 @@ function renderPollView(id, opts){
       // Hands off the menu's history slot to whatever opens next (the
       // voter-name prompt, or straight to the merge modal) instead of
       // closing + immediately pushing — see the swapOverlay comment above.
+      // Always the full poll's options (every section), never just the
+      // active tab: claiming a name applies across all sections at once,
+      // per how this app's identity model works — one name per person for
+      // the whole poll, not a different one per section.
       if (!voter) { askVoterName((v) => openMergeIdentityModal(pollId, options, pollData, v, { swap: true }), options); return; }
       openMergeIdentityModal(pollId, options, pollData, voter, { swap: true });
     });
 
     async function toggleMultiChoice(){
       try {
-        await updateDoc(doc(db, 'polls', pollId), { multiChoice: !pollData.multiChoice });
-        toast(pollData.multiChoice ? 'Switched to single choice' : 'Switched to multiple choice');
+        if (sectioned && activeSection) {
+          await updateDoc(doc(db, 'polls', pollId), { [`sections.${activeSection.id}.multiChoice`]: !activeMultiChoice });
+        } else {
+          await updateDoc(doc(db, 'polls', pollId), { multiChoice: !pollData.multiChoice });
+        }
+        toast(activeMultiChoice ? 'Switched to single choice' : 'Switched to multiple choice');
       } catch (e) {
         toast(`Could not switch voting mode: ${e.message || 'unknown error'}`);
         console.error(e);
@@ -1590,15 +1812,19 @@ function renderPollView(id, opts){
     async function castVoteWithHistory(optId){
       const voter = getVoter();
       const voterKey = voter.id;
-      const prevVotedIds = options.filter(o => o.votes && o.votes[voterKey]).map(o => o.id);
+      // Scoped to sectionOptions, not the full poll — so voting in "Food"
+      // never touches or clears a vote already cast in "Dates". A plain,
+      // non-sectioned poll has sectionOptions === options, so this is a
+      // no-op change in behavior for those.
+      const prevVotedIds = sectionOptions.filter(o => o.votes && o.votes[voterKey]).map(o => o.id);
       const wasVotedForThis = prevVotedIds.includes(optId);
-      const target = options.find(o => o.id === optId);
+      const target = sectionOptions.find(o => o.id === optId);
 
-      await castVote(pollId, options, optId, pollData.multiChoice);
+      await castVote(pollId, sectionOptions, optId, activeMultiChoice);
 
       const applyVoteState = async (votedIds) => {
         const voterObj = { name: voter.name, initials: voter.initials };
-        await Promise.all(options.map(o => {
+        await Promise.all(sectionOptions.map(o => {
           const shouldHave = votedIds.includes(o.id);
           const has = !!(o.votes && o.votes[voterKey]);
           if (shouldHave === has) return Promise.resolve();
@@ -1607,7 +1833,7 @@ function renderPollView(id, opts){
           });
         }));
       };
-      const newVotedIds = pollData.multiChoice
+      const newVotedIds = activeMultiChoice
         ? (wasVotedForThis ? prevVotedIds.filter(id => id !== optId) : [...prevVotedIds, optId])
         : (wasVotedForThis ? [] : [optId]);
 
@@ -1847,6 +2073,7 @@ function renderPollView(id, opts){
         votes: {},
         createdAt: serverTimestamp()
       };
+      if (hasSections(pollData)) payload.sectionId = activeSectionId;
       const docRef = await addDoc(collection(db, 'polls', pollId, 'options'), payload);
       const addedId = docRef.id;
       saveOptionName(name);
@@ -1874,10 +2101,12 @@ function renderPollView(id, opts){
     const btn = document.getElementById('add-dates-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
     try {
+      const sectioned = hasSections(pollData);
       await Promise.all(dates.map(iso => addDoc(collection(db, 'polls', pollId, 'options'), {
         name: formatDateOption(iso),
         notes: '', link: null, isDate: true, dateISO: iso,
-        votes: {}, createdAt: serverTimestamp()
+        votes: {}, createdAt: serverTimestamp(),
+        ...(sectioned ? { sectionId: activeSectionId } : {})
       })));
       calState.selected.clear();
       toast(`Added ${dates.length} date${dates.length===1?'':'s'}`);
@@ -1888,6 +2117,116 @@ function renderPollView(id, opts){
     } finally {
       if (onDone) onDone();
     }
+  }
+
+  /* ---------- add / rename a poll section ----------
+     One modal handles both: existingSection === null means "add a new
+     section", a section object means "rename/retype this one". Keeping
+     both in one function (mirroring openEditTitleModal's pattern) means
+     the two flows can't drift apart, and the deletion guard (only ever
+     allowed when a section is already empty) lives in exactly one place.
+     onCreated(newId) is only called after a successful ADD, so the caller
+     can point activeSectionId at the section that was just made. */
+  function openSectionModal(pollId, pollData, options, existingSection, onCreated, opts){
+    const isRename = !!existingSection;
+    const currentSections = sectionListOf(pollData);
+    const optionCountInSection = isRename ? options.filter(o => o.sectionId === existingSection.id).length : 0;
+    const canDelete = isRename && optionCountInSection === 0 && currentSections.length > 1;
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.innerHTML = `
+      <div class="modal">
+        <h3>${isRename ? 'Rename section' : 'Add a section'}</h3>
+        ${isRename ? '' : `<p>Existing options stay right where they are — this just adds a new voting tab alongside them.</p>`}
+        <label class="field-label">Section name</label>
+        <input id="section-name-input" class="field" placeholder="e.g. Dates" maxlength="30" value="${isRename ? escapeHtml(existingSection.name) : ''}" />
+        <label class="field-label">Voting mode for this section</label>
+        <div class="tab-row" style="margin-bottom:16px;">
+          <button type="button" class="tab-btn" data-section-modal-multi="0">Single choice</button>
+          <button type="button" class="tab-btn" data-section-modal-multi="1">Multiple choice</button>
+        </div>
+        ${isRename && optionCountInSection > 0 ? `<p style="font-size:12px;color:var(--text-muted);margin:-8px 0 8px;">This section has ${optionCountInSection} option${optionCountInSection===1?'':'s'}, so it can't be deleted — remove them first if you want to.</p>` : ''}
+        <div style="display:flex;gap:10px;">
+          <button class="btn btn-ghost" id="section-modal-cancel" style="flex:1">Cancel</button>
+          <button class="btn btn-primary" id="section-modal-save" style="flex:1">${isRename ? 'Save' : 'Add section'}</button>
+        </div>
+        ${canDelete ? `<button class="btn btn-ghost btn-sm" id="section-modal-delete" style="width:100%;margin-top:10px;color:var(--rose);">🗑️ Delete this empty section</button>` : ''}
+      </div>
+    `;
+    openModal(backdrop, opts);
+    const nameInput = backdrop.querySelector('#section-name-input');
+    nameInput.focus();
+    if (isRename) nameInput.select();
+    let multi = isRename ? !!existingSection.multiChoice : false;
+    const multiBtns = backdrop.querySelectorAll('[data-section-modal-multi]');
+    function paintMulti(){
+      multiBtns.forEach(b => b.classList.toggle('active', (b.getAttribute('data-section-modal-multi') === '1') === multi));
+    }
+    paintMulti();
+    multiBtns.forEach(b => b.addEventListener('click', () => { multi = b.getAttribute('data-section-modal-multi') === '1'; paintMulti(); }));
+
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(backdrop); });
+    backdrop.querySelector('#section-modal-cancel').addEventListener('click', () => closeModal(backdrop));
+
+    backdrop.querySelector('#section-modal-save').addEventListener('click', async () => {
+      const name = nameInput.value.trim();
+      if (!name) { nameInput.focus(); return; }
+      const btn = backdrop.querySelector('#section-modal-save');
+      btn.disabled = true; btn.textContent = isRename ? 'Saving…' : 'Adding…';
+      try {
+        if (isRename) {
+          await updateDoc(doc(db, 'polls', pollId), {
+            [`sections.${existingSection.id}.name`]: name,
+            [`sections.${existingSection.id}.multiChoice`]: multi,
+          });
+          toast('Section updated');
+        } else {
+          if (currentSections.length >= MAX_SECTIONS) { toast(`You can have up to ${MAX_SECTIONS} sections`); return; }
+          const newId = `sec_${genId(6)}`;
+          const wasUnsectioned = currentSections.length === 0;
+          await updateDoc(doc(db, 'polls', pollId), {
+            [`sections.${newId}`]: { name, multiChoice: multi, order: currentSections.length },
+          });
+          // First section ever added to a poll that already had plain
+          // (un-sectioned) options: fold them into it, so they don't
+          // silently vanish from view once tabs appear.
+          if (wasUnsectioned) {
+            const orphans = options.filter(o => !o.sectionId);
+            if (orphans.length) {
+              await Promise.all(orphans.map(o => updateDoc(doc(db, 'polls', pollId, 'options', o.id), { sectionId: newId })));
+            }
+          }
+          toast(`Added "${name}"`);
+          if (onCreated) onCreated(newId);
+        }
+        closeModal(backdrop);
+      } catch (e) {
+        toast(`Could not save section: ${e.message || 'unknown error'}`);
+        btn.disabled = false; btn.textContent = isRename ? 'Save' : 'Add section';
+        console.error(e);
+      }
+    });
+
+    backdrop.querySelector('#section-modal-delete')?.addEventListener('click', async () => {
+      const btn = backdrop.querySelector('#section-modal-delete');
+      btn.disabled = true; btn.textContent = 'Deleting…';
+      try {
+        // Re-number remaining sections' order so there's no gap, and switch
+        // off this section if it was the one currently being viewed.
+        const remaining = currentSections.filter(s => s.id !== existingSection.id);
+        const updates = { [`sections.${existingSection.id}`]: deleteField() };
+        remaining.forEach((s, i) => { updates[`sections.${s.id}.order`] = i; });
+        await updateDoc(doc(db, 'polls', pollId), updates);
+        if (activeSectionId === existingSection.id) activeSectionId = remaining[0]?.id || null;
+        closeModal(backdrop);
+        toast('Section deleted');
+      } catch (e) {
+        toast(`Could not delete section: ${e.message || 'unknown error'}`);
+        btn.disabled = false; btn.textContent = '🗑️ Delete this empty section';
+        console.error(e);
+      }
+    });
   }
 
   /* ---------- delete option modal (with undo) ---------- */
@@ -2118,6 +2457,45 @@ function voteCount(opt){ return Object.keys(opt.votes || {}).length; }
    straight into a WhatsApp chat. Falls back to a downloaded file on
    browsers/contexts where clipboard image-write isn't available (e.g.
    some in-app browsers), so the feature still works, just one tap slower. */
+/* ---------- results export ----------
+   A plain, non-sectioned poll keeps the original one-tap "copy an image to
+   clipboard, paste into WhatsApp" flow, unchanged. A sectioned poll instead
+   produces one sharp HD image PER section (never one combined image) and
+   hands them all to Android's native share sheet at once via the Web
+   Share API, since the clipboard can only ever hold a single image —
+   sharing multiple files together is what WhatsApp/Instagram actually
+   support on Android. If file-sharing isn't available, each image
+   downloads individually instead so nothing is silently skipped. */
+async function shareOrCopyResults(pollData, options){
+  if (!hasSections(pollData)) return copyResultsAsImage(pollData, options);
+
+  toast('Preparing images…');
+  try {
+    const sections = sectionListOf(pollData);
+    const files = [];
+    for (const s of sections) {
+      const sectionOptions = options.filter(o => o.sectionId === s.id);
+      const blob = await renderResultsBlob({ ...pollData, title: `${pollData.title} — ${s.name}` }, sectionOptions);
+      const filename = `${slugify(pollData.title) || 'poll'}-${slugify(s.name) || 'section'}-results.png`;
+      files.push(new File([blob], filename, { type: 'image/png' }));
+    }
+    if (navigator.canShare && navigator.canShare({ files })) {
+      try {
+        await navigator.share({ files, title: pollData.title });
+        return;
+      } catch (e) {
+        if (e && e.name === 'AbortError') return; // user closed the share sheet — not an error
+        console.error('Web Share failed, falling back to sequential download:', e);
+      }
+    }
+    files.forEach(f => downloadBlob(f, f.name));
+    toast(`Downloaded ${files.length} image${files.length===1?'':'s'} — attach them from your gallery`);
+  } catch (e) {
+    toast(`Could not create results images: ${e.message || 'unknown error'}`);
+    console.error(e);
+  }
+}
+
 async function copyResultsAsImage(pollData, options){
   toast('Preparing image…');
   try {
@@ -2162,7 +2540,7 @@ async function renderResultsBlob(pollData, options){
   const H = HEADER_H + rows * ROW_H + FOOTER_H + PAD;
 
   const canvas = document.createElement('canvas');
-  const scale = 2; // render at 2x for crisp text on retina/phone screens
+  const scale = 3; // 3x for sharp, HD-quality text when shared/screenshotted on a phone
   canvas.width = W * scale; canvas.height = H * scale;
   const ctx = canvas.getContext('2d');
   ctx.scale(scale, scale);
@@ -2626,7 +3004,7 @@ function askVoterName(onDone, priorOptions){
 /* ---------- claim/merge a duplicate identity ----------
    Workaround for the "cleared my cache and now I'm a new person" problem:
    lets someone fold an earlier identity's votes into their current one. */
-function openMergeIdentityModal(pollId, options, pollData, voter){
+function openMergeIdentityModal(pollId, options, pollData, voter, opts){
   const currentId = voter.id;
   const seen = new Map();
   options.forEach(opt => {
@@ -2656,7 +3034,7 @@ function openMergeIdentityModal(pollId, options, pollData, voter){
       ` : `<p style="margin-top:-8px;">No other names have voted in this poll yet.</p>`}
     </div>
   `;
-  openModal(backdrop);
+  openModal(backdrop, opts);
   backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(backdrop); });
   backdrop.querySelectorAll('[data-claim-id]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -2696,7 +3074,7 @@ function buildConfirmClaimModal(pollId, options, pollData, voter, oldId, rec){
     const btn = backdrop.querySelector('#claim-confirm');
     btn.disabled = true; btn.textContent = 'Claiming…';
     try {
-      const { moved } = await mergeVoterIdentity(pollId, options, pollData.multiChoice, oldId, voter);
+      const { moved } = await mergeVoterIdentity(pollId, options, pollData, oldId, voter);
       closeModal(backdrop);
       toast(moved ? `Claimed ${moved} vote${moved===1?'':'s'} from ${rec.name}` : `Removed duplicate — you'd already voted here`);
     } catch (e) {
@@ -2706,17 +3084,27 @@ function buildConfirmClaimModal(pollId, options, pollData, voter, oldId, rec){
     }
   });
 }
-async function mergeVoterIdentity(pollId, options, multiChoice, oldId, currentVoter){
+async function mergeVoterIdentity(pollId, options, pollData, oldId, currentVoter){
   const currentId = currentVoter.id;
-  const currentHasAnyVote = options.some(o => o.votes && o.votes[currentId]);
+  const sectioned = hasSections(pollData);
   const ops = [];
   let moved = 0;
   for (const opt of options) {
     const oldVote = opt.votes && opt.votes[oldId];
     if (!oldVote) continue;
-    if (!multiChoice && currentHasAnyVote) {
-      // Single-choice poll and this identity already has its one pick —
-      // don't overwrite it, just clear the stale duplicate.
+    // Each option's own section decides single-vs-multi here (sections
+    // can differ), and "already has a vote" is scoped to that SAME
+    // section too — otherwise an existing "Food" vote would wrongly
+    // block claiming a "Dates" vote for a plain, non-sectioned check.
+    const opSection = sectioned ? (pollData.sections[opt.sectionId] || null) : null;
+    const optMultiChoice = sectioned ? !!(opSection && opSection.multiChoice) : !!pollData.multiChoice;
+    const currentHasVoteInScope = sectioned
+      ? options.some(o => o.sectionId === opt.sectionId && o.votes && o.votes[currentId])
+      : options.some(o => o.votes && o.votes[currentId]);
+    if (!optMultiChoice && currentHasVoteInScope) {
+      // Single-choice (for this option's section) and this identity
+      // already has its one pick there — don't overwrite it, just clear
+      // the stale duplicate.
       ops.push(updateDoc(doc(db, 'polls', pollId, 'options', opt.id), { [`votes.${oldId}`]: deleteField() }));
       continue;
     }
