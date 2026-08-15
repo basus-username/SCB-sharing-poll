@@ -84,56 +84,6 @@ function despacePlus(s) {
   return s ? s.replace(/\+/g, ' ') : s;
 }
 
-/* ---------- Gemini fallback (server-side only — key never reaches the
-   browser) ----------
-   Used only when normal HTML scraping can't produce a real name: blocked
-   pages, and sites like Instagram/XHS/TikTok whose real content is
-   rendered client-side in JS so the raw server HTML only ever has a
-   generic app-shell title. Google Search grounding lets the model look up
-   what's actually at the URL instead of guessing from the link text alone.
-   Optional: if GEMINI_API_KEY isn't set in the Vercel project's env vars,
-   this is skipped entirely and the app falls back to manual entry exactly
-   like before — no key required to use the rest of the app. */
-const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
-
-async function resolveViaGemini(url) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
-
-  const prompt = `What is the specific name of the place, post, or page at this URL: ${url}\n\nRespond with ONLY the short name (e.g. a restaurant name, a place name, an article headline) — no explanation, no quotes, no punctuation around it. If you genuinely cannot determine what this specific link is, respond with exactly: UNKNOWN`;
-
-  for (const model of GEMINI_MODELS) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12000);
-    try {
-      const r = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          signal: controller.signal,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            tools: [{ google_search: {} }],
-            generationConfig: { maxOutputTokens: 60, thinkingConfig: { thinkingBudget: 0 } },
-          }),
-        }
-      );
-      clearTimeout(timeout);
-      if (!r.ok) continue; // try next model in the fallback chain
-      const data = await r.json();
-      const text = data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('').trim();
-      if (!text || /^unknown$/i.test(text)) continue;
-      const name = cleanName(text.replace(/^["'\u201c]|["'\u201d]$/g, ''));
-      if (name && !isGenericAppShell(name)) return name;
-    } catch {
-      clearTimeout(timeout);
-      // network error/timeout on this model — fall through and try the next
-    }
-  }
-  return null;
-}
-
 function extractPlaceNameFromMapsUrl(u) {
   try {
     // Saved/tapped place: /maps/place/<name>/@lat,lng,...
@@ -158,6 +108,30 @@ function extractPlaceNameFromMapsUrl(u) {
     }
   } catch { /* malformed URI component — ignore, caller handles null */ }
   return null;
+}
+
+// Google embeds a place's permanent internal ID right in the share-link
+// URL as a hex pair after "!1s" (e.g. "!1s0x304ac3...:0xb68766a4c03b4d8b").
+// The SECOND hex number there is the place's CID, and "https://maps.google.com/?cid=<decimal>"
+// is Google's own official short permalink format for that exact place —
+// same destination as the long link, just without any of the tracking
+// params (utm_source, g_ep, skid, etc). Pure string parsing, no network
+// call, no API key, so this costs nothing and never fails silently.
+function extractGoogleCid(u) {
+  const m = u.match(/!1s0x[0-9a-f]+:0x([0-9a-f]+)/i);
+  if (!m) return null;
+  try { return BigInt('0x' + m[1]).toString(10); } catch { return null; }
+}
+
+// Always returns a clean link — a CID permalink when one can be extracted
+// (the accurate, canonical case), otherwise falls back to just the
+// readable place-path portion of the URL with the data-blob/tracking
+// query string cut off entirely. Either way, nothing with "?utm_source"
+// or "&g_ep=…" ever reaches the option's saved link.
+function cleanGoogleMapsUrl(u) {
+  const cid = extractGoogleCid(u);
+  if (cid) return `https://maps.google.com/?cid=${cid}`;
+  return u.split('?')[0].split('/data=')[0];
 }
 
 const UA = 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36';
@@ -199,11 +173,9 @@ export default async function handler(req, res) {
     }
 
     if (!name) {
-      const fallback = await resolveViaGemini(trimmed);
-      if (fallback) return res.status(200).json({ name: fallback, resolvedUrl: finalUrl, source: 'gemini' });
       return res.status(404).json({ error: "Couldn't read a name from that Maps link — type it in below." });
     }
-    return res.status(200).json({ name, resolvedUrl: finalUrl });
+    return res.status(200).json({ name, resolvedUrl: cleanGoogleMapsUrl(finalUrl) });
   }
 
   /* ---------- everything else: normal page fetch + og:title ---------- */
@@ -225,8 +197,6 @@ export default async function handler(req, res) {
     const html = await r.text();
 
     if (looksBlocked(html)) {
-      const fallback = await resolveViaGemini(trimmed);
-      if (fallback) return res.status(200).json({ name: fallback, resolvedUrl: finalUrl, source: 'gemini' });
       return res.status(404).json({ error: "That site blocked automatic reading — type the name in below." });
     }
 
@@ -249,8 +219,6 @@ export default async function handler(req, res) {
     }
 
     if (!name) {
-      const fallback = await resolveViaGemini(trimmed);
-      if (fallback) return res.status(200).json({ name: fallback, resolvedUrl: finalUrl, source: 'gemini' });
       return res.status(404).json({ error: 'Could not find a name in that link — type it in below.' });
     }
 
@@ -267,8 +235,6 @@ export default async function handler(req, res) {
     res.status(200).json({ name, resolvedUrl: finalUrl, image: image || null });
   } catch (err) {
     clearTimeout(timeout);
-    const fallback = await resolveViaGemini(trimmed);
-    if (fallback) return res.status(200).json({ name: fallback, resolvedUrl: trimmed, source: 'gemini' });
     const msg = err.name === 'AbortError'
       ? 'Link took too long to load (timed out after 8s).'
       : `Could not read that link (${err.message || 'unknown network error'}).`;
