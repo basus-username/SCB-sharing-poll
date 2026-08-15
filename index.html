@@ -331,6 +331,12 @@
   .ai-suggest-btn:active{background:var(--violet-dim);}
   .ai-suggest-btn:disabled{opacity:0.6;}
   #ai-suggest-results:not(:empty){margin:8px 0 14px;display:flex;flex-wrap:wrap;gap:6px;}
+  .ai-suggest-results-head{width:100%;display:flex;justify-content:flex-end;margin-bottom:2px;}
+  .ai-suggest-close{
+    background:transparent;border:none;color:var(--text-muted);font-size:11px;font-weight:600;
+    padding:2px 4px;
+  }
+  .ai-suggest-close:active{color:var(--text);}
   .ai-suggest-chip{
     background:var(--violet-tint);border:1px solid var(--violet-dim);color:var(--text);
     font-size:12px;font-weight:500;padding:6px 11px;border-radius:14px;
@@ -347,7 +353,7 @@
   .link-clear-btn:active{background:var(--violet-dim);color:var(--text);}
   .add-link-btn{
     background:transparent;border:none;color:var(--violet);font-size:12px;font-weight:700;
-    padding:0 0 22px;text-align:left;display:block;
+    padding:6px 0 22px;text-align:left;display:block;
   }
   .extra-link-row{display:flex;gap:6px;align-items:stretch;margin-bottom:10px;}
   .extra-link-row .field{margin-bottom:0;flex:1;min-width:0;}
@@ -1934,6 +1940,10 @@ function renderPollView(id, opts){
             body: JSON.stringify({
               pollTitle: pollData.title,
               pollSubtitle: pollData.subtitle,
+              // Which tab you're adding to (e.g. "Food" vs "Dates") is the
+              // strongest signal for what a suggestion should actually be —
+              // without it, suggestions only reflect the overall poll title.
+              sectionName: sectioned && activeSection ? activeSection.name : null,
               existingNames: options.map(o => o.name),
             }),
           });
@@ -1952,15 +1962,22 @@ function renderPollView(id, opts){
             toast(data.error || fallback);
             return;
           }
-          resultsEl.innerHTML = data.suggestions.map(s =>
-            `<button type="button" class="ai-suggest-chip" data-ai-suggest="${escapeHtml(s)}">${escapeHtml(s)}</button>`
-          ).join('');
+          resultsEl.innerHTML = `
+            <div class="ai-suggest-results-head">
+              <button type="button" id="ai-suggest-close" class="ai-suggest-close" aria-label="Hide suggestions">✕ Hide</button>
+            </div>
+            ${data.suggestions.map(s =>
+              `<button type="button" class="ai-suggest-chip" data-ai-suggest="${escapeHtml(s)}">${escapeHtml(s)}</button>`
+            ).join('')}
+          `;
+          resultsEl.querySelector('#ai-suggest-close')?.addEventListener('click', () => { resultsEl.innerHTML = ''; });
           resultsEl.querySelectorAll('[data-ai-suggest]').forEach(chip => {
             chip.addEventListener('click', () => {
               const name = chip.getAttribute('data-ai-suggest');
               draftName = name;
               if (nameInput) nameInput.value = name;
               nameInput?.focus();
+              resultsEl.innerHTML = ''; // picking one clears the rest — no leftover clutter
             });
           });
         } catch (e) {
