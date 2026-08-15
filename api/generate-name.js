@@ -12,7 +12,7 @@
 // sent to, or readable by, the browser. The client only ever talks to this
 // endpoint, never to Gemini directly.
 
-const GEMINI_MODEL = 'gemini-2.5-flash-lite';
+const GEMINI_MODELS = ['gemini-flash-lite-latest', 'gemini-flash-latest'];
 const MAX_CONTEXT_LEN = 200;
 
 export default async function handler(req, res) {
@@ -45,37 +45,41 @@ export default async function handler(req, res) {
     `If you genuinely cannot tell what this is, reply with exactly: ${safePlatform || 'Link'}`,
   ].filter(Boolean).join('\n');
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        signal: controller.signal,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 30, temperature: 0.2 },
-        }),
+  let lastErrText = '';
+  for (const model of GEMINI_MODELS) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    try {
+      const r = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          signal: controller.signal,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: 30, temperature: 0.2 },
+          }),
+        }
+      );
+      clearTimeout(timeout);
+
+      if (!r.ok) {
+        lastErrText = await r.text().catch(() => '');
+        continue;
       }
-    );
-    clearTimeout(timeout);
 
-    if (!r.ok) {
-      const errText = await r.text().catch(() => '');
-      return res.status(502).json({ error: `Gemini request failed (${r.status}): ${errText.slice(0, 200)}` });
+      const data = await r.json();
+      let name = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      name = name.trim().replace(/^["'“”]+|["'“”]+$/g, '');
+      if (!name) {
+        return res.status(200).json({ name: safePlatform || null });
+      }
+      return res.status(200).json({ name });
+    } catch (e) {
+      clearTimeout(timeout);
+      lastErrText = e.name === 'AbortError' ? 'Timed out' : (e.message || 'Unknown error');
     }
-
-    const data = await r.json();
-    let name = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    name = name.trim().replace(/^["'“”]+|["'“”]+$/g, '');
-    if (!name) {
-      return res.status(200).json({ name: safePlatform || null });
-    }
-    return res.status(200).json({ name });
-  } catch (e) {
-    clearTimeout(timeout);
-    return res.status(500).json({ error: e.name === 'AbortError' ? 'Timed out' : (e.message || 'Unknown error') });
   }
+  return res.status(502).json({ error: `Gemini request failed: ${lastErrText.slice(0, 200)}` });
 }

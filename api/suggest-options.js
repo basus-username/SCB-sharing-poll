@@ -18,7 +18,14 @@
 // already used by generate-name.js, never sent to or readable by the
 // browser.
 
-const GEMINI_MODEL = 'gemini-2.5-flash-lite';
+// Two Google-maintained "evergreen" aliases, not pinned model versions —
+// Google repoints these to whatever their current Flash/Flash-Lite model
+// is, so this list should keep working without edits as models get
+// retired/renamed over time. Two entries as a safety net: if the first
+// ever gets rejected for this key/project (as gemini-2.5-flash-lite was),
+// the second is tried instead, so a single Google-side change doesn't
+// take the feature down again.
+const GEMINI_MODELS = ['gemini-flash-lite-latest', 'gemini-flash-latest'];
 const MAX_TITLE_LEN = 100;
 const MAX_SUBTITLE_LEN = 150;
 const MAX_EXISTING = 20;
@@ -59,48 +66,57 @@ export default async function handler(req, res) {
     'Reply with ONLY a JSON array of 5 short strings, nothing else — no markdown, no explanation, no trailing commentary. Example: ["Option A","Option B","Option C","Option D","Option E"]',
   ].filter(Boolean).join('\n');
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        signal: controller.signal,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 200, temperature: 0.8 },
-        }),
+  // Try each model in order — first one that responds OK wins. Each
+  // attempt gets its own short timeout so there's always time left in
+  // the function's overall budget for a fallback try.
+  let lastErrText = '';
+  for (const model of GEMINI_MODELS) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    try {
+      const r = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          signal: controller.signal,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: 200, temperature: 0.8 },
+          }),
+        }
+      );
+      clearTimeout(timeout);
+
+      if (!r.ok) {
+        lastErrText = await r.text().catch(() => '');
+        continue; // try the next model in the list
       }
-    );
-    clearTimeout(timeout);
 
-    if (!r.ok) {
-      const errText = await r.text().catch(() => '');
-      return res.status(502).json({ error: `Gemini request failed (${r.status}): ${errText.slice(0, 200)}` });
+      const data = await r.json();
+      let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      // Gemini sometimes wraps JSON in a markdown fence even when told not
+      // to — strip it defensively rather than letting JSON.parse hard-fail.
+      text = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+
+      let suggestions = [];
+      try { suggestions = JSON.parse(text); } catch { suggestions = []; }
+      if (!Array.isArray(suggestions)) suggestions = [];
+      suggestions = suggestions
+        .filter(s => typeof s === 'string' && s.trim())
+        .map(s => s.trim().slice(0, MAX_NAME_LEN))
+        .slice(0, 6);
+
+      if (!suggestions.length) {
+        return res.status(200).json({ suggestions: [], error: 'Could not come up with suggestions for this poll.' });
+      }
+      return res.status(200).json({ suggestions });
+    } catch (e) {
+      clearTimeout(timeout);
+      lastErrText = e.name === 'AbortError' ? 'Timed out' : (e.message || 'Unknown error');
+      // fall through to next model
     }
-
-    const data = await r.json();
-    let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    // Gemini sometimes wraps JSON in a markdown fence even when told not
-    // to — strip it defensively rather than letting JSON.parse hard-fail.
-    text = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
-
-    let suggestions = [];
-    try { suggestions = JSON.parse(text); } catch { suggestions = []; }
-    if (!Array.isArray(suggestions)) suggestions = [];
-    suggestions = suggestions
-      .filter(s => typeof s === 'string' && s.trim())
-      .map(s => s.trim().slice(0, MAX_NAME_LEN))
-      .slice(0, 6);
-
-    if (!suggestions.length) {
-      return res.status(200).json({ suggestions: [], error: 'Could not come up with suggestions for this poll.' });
-    }
-    return res.status(200).json({ suggestions });
-  } catch (e) {
-    clearTimeout(timeout);
-    return res.status(500).json({ error: e.name === 'AbortError' ? 'Timed out' : (e.message || 'Unknown error') });
   }
+  // Every model in the list failed.
+  return res.status(502).json({ error: `Gemini request failed: ${lastErrText.slice(0, 200)}` });
 }
