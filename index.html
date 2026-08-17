@@ -1141,8 +1141,9 @@ async function resolveNameForLink(link, context){
 async function batchAddLinksAsOptions(pollId, links, contextByUrl, sectionId){
   const names = await Promise.all(links.map(async (link) => {
     const { name, url, thumbnail } = await resolveNameForLink(link, contextByUrl && contextByUrl[link]);
+    const cleanUrl = cleanGoogleMapsUrlClient(url); // safety net in case the server-side clean didn't stick
     const payload = {
-      name, notes: '', link: url, links: [url], thumbnail: thumbnail || null,
+      name, notes: '', link: cleanUrl, links: [cleanUrl], thumbnail: thumbnail || null,
       isDate: false, votes: {}, createdAt: serverTimestamp()
     };
     if (sectionId) payload.sectionId = sectionId;
@@ -1647,6 +1648,9 @@ function renderPollView(id, opts){
     // rows don't jump around as people vote. "Leading" is still highlighted.
     const topCount = sectionOptions.length ? Math.max(...sectionOptions.map(voteCount)) : 0;
     const totalVotes = sectionOptions.reduce((sum, o) => sum + voteCount(o), 0);
+    // Whole-poll (not just this tab) — options added before the link-cleaning
+    // logic existed can still be carrying the long, tracking-param-laden URL.
+    const hasMessyMapsLinks = options.some(o => optionLinks(o).some(l => l !== cleanGoogleMapsUrlClient(l)));
     const allSelected = selectMode && sectionOptions.length > 0 && sectionOptions.every(o => selectedIds.has(o.id));
 
     $app.innerHTML = `
@@ -1684,6 +1688,7 @@ function renderPollView(id, opts){
         ${menuOpen ? `
           <div class="menu-popover" id="more-menu">
             <button class="menu-item" id="share-btn">🔗 Copy share link</button>
+            <button class="menu-item" id="remind-btn">🔔 Remind everyone (WhatsApp)</button>
             <button class="menu-item" id="edit-title-btn">✏️ Edit poll title</button>
             <button class="menu-item" id="copy-results-btn">📋 Share results</button>
             <button class="menu-item" id="merge-identity-btn">🙋 Claim votes from a previous name</button>
@@ -1692,6 +1697,7 @@ function renderPollView(id, opts){
               : `<button class="menu-item" id="add-first-section-btn">🏷️ Add a section</button>`
             }
             <button class="menu-item" id="bulk-select-btn">🗑️ Select options to delete</button>
+            ${hasMessyMapsLinks ? `<button class="menu-item" id="clean-links-btn">🧹 Shorten long Maps links</button>` : ''}
           </div>
         ` : ''}
       </div>
@@ -1782,6 +1788,18 @@ function renderPollView(id, opts){
     document.getElementById('share-btn')?.addEventListener('click', () => {
       navigator.clipboard?.writeText(location.href);
       toast('Link copied — send it to the group!');
+      closeOverlay(closeMenu);
+    });
+
+    document.getElementById('remind-btn')?.addEventListener('click', () => {
+      const voterCount = new Set(options.flatMap(o => Object.keys(o.votes || {}))).size;
+      const socialProof = voterCount > 0
+        ? `${voterCount} ${voterCount === 1 ? 'person has' : 'people have'} voted so far — don't miss out!`
+        : `No one's voted yet — be the first!`;
+      const message = `🗳️ Reminder to vote: "${pollData.title}"\n${socialProof}\n\n${location.href}`;
+      // wa.me with no phone number opens WhatsApp's own chat picker, pre-filled —
+      // works whether the recipient has YouVote or not, since it's just a WhatsApp message.
+      window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
       closeOverlay(closeMenu);
     });
 
@@ -1913,6 +1931,26 @@ function renderPollView(id, opts){
       selectedIds.clear();
       swapOverlay(closeSelectMode); // hands off the menu's history slot to select mode
       draw();
+    });
+
+    document.getElementById('clean-links-btn')?.addEventListener('click', async () => {
+      menuOpen = false;
+      draw();
+      const dirty = options.filter(o => optionLinks(o).some(l => l !== cleanGoogleMapsUrlClient(l)));
+      if (!dirty.length) return;
+      toast(`Shortening ${dirty.length} link${dirty.length===1?'':'s'}…`);
+      try {
+        await Promise.all(dirty.map(o => {
+          const cleaned = optionLinks(o).map(cleanGoogleMapsUrlClient);
+          return updateDoc(doc(db, 'polls', pollId, 'options', o.id), {
+            links: cleaned, link: cleaned[0] || null
+          });
+        }));
+        toast(`Cleaned up ${dirty.length} link${dirty.length===1?'':'s'} ✓`);
+      } catch (e) {
+        toast(`Couldn't clean up all the links: ${e.message || 'unknown error'}`);
+        console.error(e);
+      }
     });
 
     document.getElementById('bulk-cancel-btn')?.addEventListener('click', () => {
@@ -2321,7 +2359,7 @@ function renderPollView(id, opts){
     const name = document.getElementById('opt-name').value.trim();
     const link = document.getElementById('opt-link').value.trim();
     const extraLinks = Array.from(document.querySelectorAll('.extra-link-input')).map(el => el.value.trim()).filter(Boolean);
-    const links = [link, ...extraLinks].filter(Boolean);
+    const links = [link, ...extraLinks].filter(Boolean).map(cleanGoogleMapsUrlClient);
     const notes = document.getElementById('opt-notes').value.trim();
     if (!name) { document.getElementById('opt-name').focus(); return; }
 
@@ -2838,7 +2876,7 @@ async function renderResultsBlob(pollData, options){
   ctx.scale(scale, scale);
 
   const bg = '#141319', surface = '#1E1C27', border = '#4E4768', text = '#F5F3FA',
-        textMuted = '#A39DB8', violet = '#A594F5', violetDim = '#332C4D', gold = '#EFB65C';
+        textMuted = '#A39DB8', violet = '#A594F5', gold = '#EFB65C';
 
   // background
   ctx.fillStyle = bg;
@@ -2874,13 +2912,16 @@ async function renderResultsBlob(pollData, options){
     ctx.strokeStyle = border; ctx.lineWidth = 1;
     roundRect(ctx, PAD, rowY + 6, barMaxW, ROW_H - 16, 12); ctx.stroke();
 
-    // progress fill
+    // progress fill — bright violet at moderate opacity, not the old dim
+    // violet-on-dark-surface combo (same low-contrast issue as the live
+    // app's bars, fixed the same way, so a shared image matches what
+    // people already see on their screen).
     const fillW = Math.max(0, Math.min(barMaxW, barMaxW * pct));
     if (fillW > 0) {
       ctx.save();
       roundRect(ctx, PAD, rowY + 6, barMaxW, ROW_H - 16, 12); ctx.clip();
-      ctx.globalAlpha = 0.5;
-      ctx.fillStyle = violetDim;
+      ctx.globalAlpha = 0.4;
+      ctx.fillStyle = violet;
       ctx.fillRect(PAD, rowY + 6, fillW, ROW_H - 16);
       ctx.restore();
     }
@@ -2955,12 +2996,19 @@ function optionCardHtml(opt, voter, totalVotes, isLeading, expanded, selectMode,
   const hasVoted = !!(voterKey && opt.votes && opt.votes[voterKey]);
   const voterEntries = Object.entries(opt.votes || {});
   const links = optionLinks(opt);
-  const barColor = 'var(--violet-dim)';
+  // Was --violet-dim at 55% opacity — a dark muted purple over a dark
+  // card background reads as almost no contrast at all (the reported
+  // "can't see the bar" issue). Switched to the same bright --violet used
+  // for CTAs/active states elsewhere, so it's unmistakable at a glance
+  // without introducing a second accent color. The count leader gets a
+  // touch more opacity — enough to read as "ahead" without a badge/icon.
+  const barColor = 'var(--violet)';
+  const barOpacity = count > 0 ? (isLeading ? 0.5 : 0.32) : 0;
 
   return `
     <div class="option-card" data-option-id="${opt.id}">
       <div class="option-row" data-vote-row="${opt.id}" role="button" tabindex="0" aria-pressed="${hasVoted}" aria-label="Vote for ${escapeHtml(opt.name)}">
-        <div class="opt-progress-bg" style="width:${pct}%;background:${barColor};"></div>
+        <div class="opt-progress-bg" style="width:${pct}%;background:${barColor};opacity:${barOpacity};"></div>
         <div class="opt-row-content">
           ${selectMode
             ? `<div class="select-check ${isSelected ? 'checked' : ''}" data-select-option="${opt.id}" aria-hidden="true">${isSelected ? '✓' : ''}</div>`
@@ -3001,6 +3049,22 @@ function optionCardHtml(opt, voter, totalVotes, isLeading, expanded, selectMode,
 /* Turns a raw URL into a short, recognizable label — the actual domain,
    with a couple of very common ones given a friendlier name — so a voter
    can tell what they're about to open instead of tapping a blind "Link 1". */
+/* Client-side mirror of api/resolve-link.js's cleanGoogleMapsUrl/
+   extractGoogleCid — same CID-extraction, pure string parsing, no network
+   call. This exists so a Maps link is guaranteed clean the moment it's
+   saved, even if the paste-time server resolve never ran or hasn't
+   finished yet (e.g. someone types a name and hits "Add" immediately
+   after pasting). If the server-side version of this logic ever changes,
+   update both — they intentionally stay in sync rather than sharing a
+   module, since this is a single-file app with no build step. */
+function cleanGoogleMapsUrlClient(u){
+  if (!u || !/google\.[a-z.]+\/maps/i.test(u)) return u; // only touches full google.com/maps links — goo.gl/maps.app.goo.gl short links have no CID to read yet
+  const m = u.match(/!1s0x[0-9a-f]+:0x([0-9a-f]+)/i);
+  if (m) {
+    try { return `https://maps.google.com/?cid=${BigInt('0x' + m[1]).toString(10)}`; } catch { /* fall through */ }
+  }
+  return u.split('?')[0].split('/data=')[0];
+}
 function linkPreviewLabel(url){
   let hostname, pathname;
   try {
