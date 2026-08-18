@@ -222,17 +222,16 @@
     margin:0 -16px 12px;padding:0 16px 8px;
     background:linear-gradient(180deg,rgba(37,31,56,0.4) 0%,rgba(37,31,56,0) 100%);
   }
-  .poll-title{font-size:21px;margin:0 0 4px;font-weight:500;letter-spacing:0.1px;font-optical-sizing:none;font-variation-settings:'opsz' 16;}
+  .poll-title{font-size:21px;margin:0 0 4px;font-weight:500;letter-spacing:0.1px;}
   .poll-title-row{
     position:sticky;top:0;z-index:30;
     background:linear-gradient(180deg,var(--violet-tint) 0%,rgba(37,31,56,0.55) 65%,rgba(37,31,56,0) 100%);
-    display:flex;align-items:center;gap:8px;
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
     margin:0 -16px 0;padding:14px 16px 14px;
   }
-  .poll-title-row .poll-title{margin:0;}
-  .poll-subtitle{font-size:12.5px;color:var(--text-muted);margin:3px 0 6px;white-space:pre-wrap;word-break:break-word;}
-  .poll-meta-row{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;}
-  .poll-meta{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted);flex-wrap:wrap;}
+  .poll-title-row .poll-title{margin:0;flex:1;min-width:0;word-break:break-word;}
+  .poll-title-row .chip-icon-only{flex-shrink:0;}
+  .poll-subtitle{font-size:12.5px;color:var(--text-muted);margin:3px 0 0;white-space:pre-wrap;word-break:break-word;}
   .meta-toggle{
     background:transparent;border:none;padding:2px 0;margin:-2px 0;
     color:var(--text-muted);font-size:12px;font-family:inherit;font-weight:inherit;
@@ -1698,6 +1697,7 @@ function renderPollView(id, opts){
 
       <div class="poll-title-row">
         <h1 class="poll-title">${escapeHtml(pollData.title)}</h1>
+        <button class="chip chip-icon-only" id="more-menu-btn" title="More options" aria-label="More options">⋯</button>
       </div>
       <div class="poll-header">
         ${(() => {
@@ -1713,11 +1713,6 @@ function renderPollView(id, opts){
           `;
         })()}
         ${pollData.subtitle ? `<div class="poll-subtitle">${escapeHtml(pollData.subtitle)}</div>` : ''}
-        <div class="poll-meta-row">
-          <div class="chip-row">
-            <button class="chip chip-icon-only" id="more-menu-btn" title="More options" aria-label="More options">⋯</button>
-          </div>
-        </div>
         ${menuOpen ? `
           <div class="menu-popover" id="more-menu">
             <button class="menu-item" id="share-btn">🔗 Copy share link</button>
@@ -1725,7 +1720,7 @@ function renderPollView(id, opts){
             <button class="menu-item" id="copy-results-btn">📋 Share results</button>
             <button class="menu-item" id="remind-btn">🔔 Remind everyone (WhatsApp)</button>
             ${sectioned
-              ? `<button class="menu-item" id="rename-section-btn">✏️ Edit "${escapeHtml(activeSection ? activeSection.name : '')}"</button>`
+              ? `<button class="menu-item" id="rename-section-btn">✏️ Rename "${escapeHtml(activeSection ? activeSection.name : '')}"</button>`
               : `<button class="menu-item" id="add-first-section-btn">🏷️ Add a section</button>`
             }
             <div class="menu-divider"></div>
@@ -1848,13 +1843,7 @@ function renderPollView(id, opts){
       const socialProof = voterCount > 0
         ? `${voterCount} ${voterCount === 1 ? 'person has' : 'people have'} voted so far — don't miss out!`
         : `No one's voted yet — be the first!`;
-      // A cache-busting param on the link, not the canonical link itself —
-      // WhatsApp caches the preview card per exact URL, so a poll shared
-      // before an og:image fix (or before it was ever set) can keep showing
-      // a stale text-only card indefinitely otherwise. This forces WhatsApp
-      // to treat every reminder as a "new" URL and re-crawl the preview.
-      const reminderUrl = `${location.origin}${location.pathname}${location.search}${location.search ? '&' : '?'}r=${Date.now().toString(36)}`;
-      const message = `🗳️ Reminder to vote: "${pollData.title}"\n${socialProof}\n\n${reminderUrl}`;
+      const message = `🗳️ Reminder to vote: "${pollData.title}"\n${socialProof}\n\n${location.href}`;
       // wa.me with no phone number opens WhatsApp's own chat picker, pre-filled —
       // works whether the recipient has YouVote or not, since it's just a WhatsApp message.
       window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
