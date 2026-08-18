@@ -10,13 +10,21 @@
 <meta property="og:description" content="Quickest group polls" />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://scb-youvote-pikachew.vercel.app/" />
-<meta property="og:image" content="https://scb-youvote-pikachew.vercel.app/icons/icon-512.png" />
-<meta property="og:image:width" content="512" />
-<meta property="og:image:height" content="512" />
+<!-- Deliberately the 192px icon, not 512: WhatsApp/FB-style link-preview
+     scrapers switch from a small "summary" card (icon + text side by side,
+     like YouVote 1.0's link) to a big "summary_large_image"-style card
+     once the declared og:image is large/square enough — 512x512 was
+     tipping it into the big-banner treatment. 192x192 is still sharp on
+     any screen that shows it small, but reads as a compact icon rather
+     than a giant square. DO NOT bump this back to icon-512.png without
+     checking the WhatsApp preview on-device first. -->
+<meta property="og:image" content="https://scb-youvote-pikachew.vercel.app/icons/icon-192.png" />
+<meta property="og:image:width" content="192" />
+<meta property="og:image:height" content="192" />
 <meta name="twitter:card" content="summary" />
 <meta name="twitter:title" content="YouVote 2.0" />
 <meta name="twitter:description" content="Quickest group polls" />
-<meta name="twitter:image" content="https://scb-youvote-pikachew.vercel.app/icons/icon-512.png" />
+<meta name="twitter:image" content="https://scb-youvote-pikachew.vercel.app/icons/icon-192.png" />
 
 <link rel="manifest" href="/manifest.json" />
 <meta name="theme-color" content="#141319" />
@@ -65,7 +73,7 @@
   input,textarea{font-family:inherit;}
   ::selection{background:var(--violet-dim);}
 
-  #app{max-width:560px;margin:0 auto;padding:20px 16px 40px;}
+  #app{max-width:560px;margin:0 auto;padding:8px 16px 40px;}
 
   /* ---------- permanent undo fab ----------
      Lives bottom-right, floating above content, so it never competes with
@@ -98,6 +106,13 @@
     width:30px;height:30px;border-radius:8px;
     background:linear-gradient(155deg,#8A6BF0,#D162C9 55%,#FFB648);
     display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;
+    /* Optical nudge, not a real misalignment: the two-line text block
+       (name + credit) has more visual weight toward its bottom half than
+       a flexbox's geometric center accounts for, so a perfectly
+       align-items:center icon reads as sitting a hair too high next to
+       it. 1px down-shift is enough to fix the illusion without being
+       visible as its own thing. */
+    transform:translateY(1px);
   }
   .brand-name{font-family:'Inter',sans-serif;font-weight:500;font-size:15px;letter-spacing:0.1px;line-height:1.15;}
   .credit{font-size:10px;color:var(--text-muted);letter-spacing:.3px;margin-top:1px;}
