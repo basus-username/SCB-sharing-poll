@@ -134,6 +134,36 @@ function cleanGoogleMapsUrl(u) {
   return u.split('?')[0].split('/data=')[0];
 }
 
+// Well-established tracking/analytics query params — NOT a functional
+// allowlist, so anything not on this list is left alone. Deliberately
+// conservative: better to leave a param we're unsure about than strip
+// something a site actually needs to resolve correctly (e.g. YouTube's
+// "v", Amazon's product path segments, etc. are never touched since
+// they're not query params to begin with).
+const TRACKING_PARAMS = new Set([
+  'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'utm_id', 'utm_name', 'utm_reader',
+  'fbclid', 'gclid', 'gclsrc', 'dclid', 'msclkid', 'twclid', 'ttclid',
+  'igshid', 'igsh', 'mibextid',
+  'si', 'feature',
+  'ref', 'ref_src', 'ref_url',
+  'mc_cid', 'mc_eid', 'spm',
+  'share_id', 'is_copy_url', 'is_from_webapp', 'sender_device', 'share_app_id',
+  '_ga', '_gl', 'trk', 'trkcampaign'
+]);
+function sanitizeShareUrl(u) {
+  if (isGoogleMapsUrl(u)) return cleanGoogleMapsUrl(u);
+  try {
+    const parsed = new URL(u);
+    let changed = false;
+    Array.from(parsed.searchParams.keys()).forEach((key) => {
+      if (TRACKING_PARAMS.has(key.toLowerCase())) { parsed.searchParams.delete(key); changed = true; }
+    });
+    return changed ? parsed.toString() : u;
+  } catch {
+    return u; // not a parseable absolute URL — leave untouched rather than risk mangling it
+  }
+}
+
 const UA = 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36';
 
 export default async function handler(req, res) {
@@ -232,7 +262,7 @@ export default async function handler(req, res) {
       catch { image = null; }
     }
 
-    res.status(200).json({ name, resolvedUrl: finalUrl, image: image || null });
+    res.status(200).json({ name, resolvedUrl: sanitizeShareUrl(finalUrl), image: image || null });
   } catch (err) {
     clearTimeout(timeout);
     const msg = err.name === 'AbortError'
