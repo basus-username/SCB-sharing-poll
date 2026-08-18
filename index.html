@@ -9,15 +9,22 @@
 <meta property="og:title" content="YouVote 2.0" />
 <meta property="og:description" content="Quickest group polls" />
 <meta property="og:type" content="website" />
-<meta property="og:image" content="/icon-512.png" />
+<meta property="og:url" content="https://scb-youvote-pikachew.vercel.app/" />
+<meta property="og:image" content="https://scb-youvote-pikachew.vercel.app/icons/icon-512.png" />
+<meta property="og:image:width" content="512" />
+<meta property="og:image:height" content="512" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="YouVote 2.0" />
+<meta name="twitter:description" content="Quickest group polls" />
+<meta name="twitter:image" content="https://scb-youvote-pikachew.vercel.app/icons/icon-512.png" />
 
 <link rel="manifest" href="/manifest.json" />
 <meta name="theme-color" content="#141319" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="YouVote 2.0" />
-<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-<link rel="icon" href="/icon-192.png" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<link rel="icon" href="/icons/icon-192.png" />
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -215,7 +222,7 @@
     margin:0 -16px 12px;padding:0 16px 8px;
     background:linear-gradient(180deg,rgba(37,31,56,0.4) 0%,rgba(37,31,56,0) 100%);
   }
-  .poll-title{font-size:21px;margin:0 0 4px;}
+  .poll-title{font-size:21px;margin:0 0 4px;font-weight:500;letter-spacing:0.1px;}
   .poll-title-row{
     position:sticky;top:0;z-index:30;
     background:linear-gradient(180deg,var(--violet-tint) 0%,rgba(37,31,56,0.55) 65%,rgba(37,31,56,0) 100%);
@@ -224,7 +231,7 @@
   }
   .poll-title-row .poll-title{margin:0;}
   .poll-subtitle{font-size:12.5px;color:var(--text-muted);margin:3px 0 10px;white-space:pre-wrap;word-break:break-word;}
-  .poll-meta-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;}
+  .poll-meta-row{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;}
   .poll-meta{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted);flex-wrap:wrap;}
   .meta-toggle{
     background:transparent;border:none;padding:2px 0;margin:-2px 0;
@@ -249,6 +256,7 @@
   }
   .menu-item:last-child{border-bottom:none;}
   .menu-item:active{background:var(--surface-2);}
+  .menu-divider{height:1px;background:var(--border);margin:4px 0;}
 
   /* ---------- option cards ---------- */
   .option-card{
@@ -594,6 +602,24 @@ function isStandaloneMode(){
 function isIOS(){
   return /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
 }
+// WhatsApp/Instagram/Facebook/Line/WeChat all open shared links in their
+// own embedded in-app browser rather than the person's real browser or
+// native apps — so a tap on an Instagram/Maps option link stays trapped
+// in that same sandboxed webview instead of opening the Instagram app or
+// a full browser. There's no way for a page to force its way out of that
+// sandbox (deliberate platform restriction, most pronounced on iOS) — the
+// most a site can do is detect it and prompt the person to escape once,
+// after which normal links behave normally again.
+function detectInAppBrowser(){
+  const ua = navigator.userAgent || '';
+  if (/FBAN|FBAV|FB_IAB/i.test(ua)) return 'Facebook';
+  if (/Instagram/i.test(ua)) return 'Instagram';
+  if (/\bLine\//i.test(ua)) return 'Line';
+  if (/MicroMessenger/i.test(ua)) return 'WeChat';
+  if (/WhatsApp/i.test(ua)) return 'WhatsApp'; // rare to see on the UA itself, but covers cases where it is
+  return null;
+}
+let inAppBannerDismissed = false; // per-visit only — a fresh open from the in-app browser is a fresh chance to escape it
 // Dismissing the install banner snoozes it for 14 days rather than hiding
 // it forever — most people don't install on day one, so a permanent hide
 // would bury a genuinely useful prompt. Re-surfaces automatically after.
@@ -1141,7 +1167,7 @@ async function resolveNameForLink(link, context){
 async function batchAddLinksAsOptions(pollId, links, contextByUrl, sectionId){
   const names = await Promise.all(links.map(async (link) => {
     const { name, url, thumbnail } = await resolveNameForLink(link, contextByUrl && contextByUrl[link]);
-    const cleanUrl = cleanGoogleMapsUrlClient(url); // safety net in case the server-side clean didn't stick
+    const cleanUrl = sanitizeShareUrlClient(url); // safety net in case the server-side sanitize didn't stick
     const payload = {
       name, notes: '', link: cleanUrl, links: [cleanUrl], thumbnail: thumbnail || null,
       isDate: false, votes: {}, createdAt: serverTimestamp()
@@ -1650,7 +1676,7 @@ function renderPollView(id, opts){
     const totalVotes = sectionOptions.reduce((sum, o) => sum + voteCount(o), 0);
     // Whole-poll (not just this tab) — options added before the link-cleaning
     // logic existed can still be carrying the long, tracking-param-laden URL.
-    const hasMessyMapsLinks = options.some(o => optionLinks(o).some(l => l !== cleanGoogleMapsUrlClient(l)));
+    const hasMessyLinks = options.some(o => optionLinks(o).some(l => l !== sanitizeShareUrlClient(l)));
     const allSelected = selectMode && sectionOptions.length > 0 && sectionOptions.every(o => selectedIds.has(o.id));
 
     $app.innerHTML = `
@@ -1674,13 +1700,20 @@ function renderPollView(id, opts){
         <h1 class="poll-title">${escapeHtml(pollData.title)}</h1>
       </div>
       <div class="poll-header">
+        ${(() => {
+          const iab = detectInAppBrowser();
+          if (!iab || inAppBannerDismissed) return '';
+          return `
+            <div class="install-banner-compact" id="iab-banner">
+              <span class="install-banner-icon">↗️</span>
+              <span class="install-banner-text">Viewing inside ${iab} — links may not open properly here.</span>
+              <button class="install-banner-hint-btn" id="iab-open-btn">Open in browser</button>
+              <button class="install-banner-dismiss" id="iab-dismiss-btn" aria-label="Dismiss">✕</button>
+            </div>
+          `;
+        })()}
         ${pollData.subtitle ? `<div class="poll-subtitle">${escapeHtml(pollData.subtitle)}</div>` : ''}
         <div class="poll-meta-row">
-          <div class="poll-meta">
-            <span>${sectionOptions.length} option${sectionOptions.length===1?'':'s'}</span>
-            <span>·</span>
-            <button class="meta-toggle" id="toggle-multi-inline" title="Tap to switch voting mode">${activeMultiChoice ? 'Multiple choice' : 'Single choice'}</button>
-          </div>
           <div class="chip-row">
             <button class="chip chip-icon-only" id="more-menu-btn" title="More options" aria-label="More options">⋯</button>
           </div>
@@ -1688,16 +1721,18 @@ function renderPollView(id, opts){
         ${menuOpen ? `
           <div class="menu-popover" id="more-menu">
             <button class="menu-item" id="share-btn">🔗 Copy share link</button>
-            <button class="menu-item" id="remind-btn">🔔 Remind everyone (WhatsApp)</button>
             <button class="menu-item" id="edit-title-btn">✏️ Edit poll title</button>
             <button class="menu-item" id="copy-results-btn">📋 Share results</button>
-            <button class="menu-item" id="merge-identity-btn">🙋 Claim votes from a previous name</button>
+            <button class="menu-item" id="remind-btn">🔔 Remind everyone (WhatsApp)</button>
             ${sectioned
               ? `<button class="menu-item" id="rename-section-btn">✏️ Rename "${escapeHtml(activeSection ? activeSection.name : '')}"</button>`
               : `<button class="menu-item" id="add-first-section-btn">🏷️ Add a section</button>`
             }
+            <div class="menu-divider"></div>
+            <button class="menu-item" id="toggle-multi-btn">🔀 Toggle to ${activeMultiChoice ? 'single' : 'multiple'} choice</button>
             <button class="menu-item" id="bulk-select-btn">🗑️ Select options to delete</button>
-            ${hasMessyMapsLinks ? `<button class="menu-item" id="clean-links-btn">🧹 Shorten long Maps links</button>` : ''}
+            <button class="menu-item" id="merge-identity-btn">🙋 Claim votes from a previous name</button>
+            ${hasMessyLinks ? `<button class="menu-item" id="clean-links-btn">🧹 Sanitize sharing links</button>` : ''}
           </div>
         ` : ''}
       </div>
@@ -1783,6 +1818,23 @@ function renderPollView(id, opts){
     });
     document.getElementById('add-collapse-btn')?.addEventListener('click', () => {
       closeOverlay(closeAddPanel);
+    });
+
+    document.getElementById('iab-dismiss-btn')?.addEventListener('click', () => {
+      inAppBannerDismissed = true;
+      draw();
+    });
+    document.getElementById('iab-open-btn')?.addEventListener('click', () => {
+      const url = location.href;
+      if (isIOS()) {
+        toast('Tap the ⋯ or ↗ icon at the top of this screen, then "Open in Safari"');
+        return;
+      }
+      // No app package specified deliberately — lets Android offer whatever
+      // the person's actual default/installed browsers are, rather than
+      // assuming everyone uses Chrome.
+      const intentUrl = `intent://${url.replace(/^https?:\/\//, '')}#Intent;scheme=https;action=android.intent.action.VIEW;end;`;
+      window.location.href = intentUrl;
     });
 
     document.getElementById('share-btn')?.addEventListener('click', () => {
@@ -1936,17 +1988,17 @@ function renderPollView(id, opts){
     document.getElementById('clean-links-btn')?.addEventListener('click', async () => {
       menuOpen = false;
       draw();
-      const dirty = options.filter(o => optionLinks(o).some(l => l !== cleanGoogleMapsUrlClient(l)));
+      const dirty = options.filter(o => optionLinks(o).some(l => l !== sanitizeShareUrlClient(l)));
       if (!dirty.length) return;
-      toast(`Shortening ${dirty.length} link${dirty.length===1?'':'s'}…`);
+      toast(`Sanitizing ${dirty.length} link${dirty.length===1?'':'s'}…`);
       try {
         await Promise.all(dirty.map(o => {
-          const cleaned = optionLinks(o).map(cleanGoogleMapsUrlClient);
+          const cleaned = optionLinks(o).map(sanitizeShareUrlClient);
           return updateDoc(doc(db, 'polls', pollId, 'options', o.id), {
             links: cleaned, link: cleaned[0] || null
           });
         }));
-        toast(`Cleaned up ${dirty.length} link${dirty.length===1?'':'s'} ✓`);
+        toast(`Sanitized ${dirty.length} link${dirty.length===1?'':'s'} ✓`);
       } catch (e) {
         toast(`Couldn't clean up all the links: ${e.message || 'unknown error'}`);
         console.error(e);
@@ -2008,7 +2060,10 @@ function renderPollView(id, opts){
         console.error(e);
       }
     }
-    document.getElementById('toggle-multi-inline')?.addEventListener('click', () => toggleMultiChoice());
+    document.getElementById('toggle-multi-btn')?.addEventListener('click', () => {
+      closeOverlay(closeMenu);
+      toggleMultiChoice();
+    });
 
     document.getElementById('edit-title-btn')?.addEventListener('click', () => {
       // Hand off the menu's overlay slot directly to the edit-title modal
@@ -2359,7 +2414,7 @@ function renderPollView(id, opts){
     const name = document.getElementById('opt-name').value.trim();
     const link = document.getElementById('opt-link').value.trim();
     const extraLinks = Array.from(document.querySelectorAll('.extra-link-input')).map(el => el.value.trim()).filter(Boolean);
-    const links = [link, ...extraLinks].filter(Boolean).map(cleanGoogleMapsUrlClient);
+    const links = [link, ...extraLinks].filter(Boolean).map(sanitizeShareUrlClient);
     const notes = document.getElementById('opt-notes').value.trim();
     if (!name) { document.getElementById('opt-name').focus(); return; }
 
@@ -2837,14 +2892,45 @@ async function shareOrCopyResults(pollData, options){
         console.error('Clipboard write failed, falling back to download:', e);
       }
     }
-    files.forEach(f => downloadBlob(f, f.name));
-    toast(`Downloaded ${files.length} image${files.length===1?'':'s'} — attach ${files.length===1?'it':'them'} and add this caption: ${caption}`);
+    // Neither Web Share (with files) nor clipboard image-write is available
+    // here — likely an older/OEM browser (common on lower-end Android
+    // devices). A 2-second toast is easy to miss under the browser's own
+    // "Download complete" system UI, so this is a real modal that stays up
+    // until it's dismissed, setting expectations *before* the download
+    // starts rather than describing it after the fact.
+    openDownloadFallbackModal(files.length, () => {
+      files.forEach(f => downloadBlob(f, f.name));
+    });
   } catch (e) {
     toast(`Could not create results image${sectioned ? 's' : ''}: ${e.message || 'unknown error'}`);
     console.error(e);
   }
 }
 
+/* Shown only when this browser can do neither native file-sharing nor
+   clipboard image-write — a real modal (not a toast) so the explanation
+   survives whatever the browser's own download UI does next. */
+function openDownloadFallbackModal(fileCount, onConfirm){
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal">
+      <h3>Can't share directly from this browser</h3>
+      <p>This browser doesn't support sending images straight to WhatsApp, so I'll download ${fileCount} image${fileCount===1?'':'s'} to your device instead. Once ${fileCount===1?'it finishes':'they finish'}, open your Downloads or Gallery and share from there — same as sharing any photo.</p>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-ghost" id="dl-fallback-cancel" style="flex:1">Cancel</button>
+        <button class="btn btn-primary" id="dl-fallback-confirm" style="flex:1">Download image${fileCount===1?'':'s'}</button>
+      </div>
+    </div>
+  `;
+  openModal(backdrop);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(backdrop); });
+  backdrop.querySelector('#dl-fallback-cancel').addEventListener('click', () => closeModal(backdrop));
+  backdrop.querySelector('#dl-fallback-confirm').addEventListener('click', () => {
+    onConfirm();
+    closeModal(backdrop);
+  });
+}
 function downloadBlob(blob, filename){
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -3049,21 +3135,44 @@ function optionCardHtml(opt, voter, totalVotes, isLeading, expanded, selectMode,
 /* Turns a raw URL into a short, recognizable label — the actual domain,
    with a couple of very common ones given a friendlier name — so a voter
    can tell what they're about to open instead of tapping a blind "Link 1". */
-/* Client-side mirror of api/resolve-link.js's cleanGoogleMapsUrl/
-   extractGoogleCid — same CID-extraction, pure string parsing, no network
-   call. This exists so a Maps link is guaranteed clean the moment it's
-   saved, even if the paste-time server resolve never ran or hasn't
-   finished yet (e.g. someone types a name and hits "Add" immediately
-   after pasting). If the server-side version of this logic ever changes,
-   update both — they intentionally stay in sync rather than sharing a
-   module, since this is a single-file app with no build step. */
-function cleanGoogleMapsUrlClient(u){
-  if (!u || !/google\.[a-z.]+\/maps/i.test(u)) return u; // only touches full google.com/maps links — goo.gl/maps.app.goo.gl short links have no CID to read yet
-  const m = u.match(/!1s0x[0-9a-f]+:0x([0-9a-f]+)/i);
-  if (m) {
-    try { return `https://maps.google.com/?cid=${BigInt('0x' + m[1]).toString(10)}`; } catch { /* fall through */ }
+/* Client-side mirror of api/resolve-link.js's sanitizeShareUrl (Google
+   Maps CID extraction + generic tracking-param stripping) — same logic,
+   pure string/URL parsing, no network call. This exists so any link is
+   guaranteed clean the moment it's saved, even if the paste-time server
+   resolve never ran or hasn't finished yet (e.g. someone types a name
+   and hits "Add" immediately after pasting). If the server-side version
+   ever changes, update both — they intentionally stay in sync rather
+   than sharing a module, since this is a single-file app with no build
+   step. */
+const TRACKING_PARAMS_CLIENT = new Set([
+  'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'utm_id', 'utm_name', 'utm_reader',
+  'fbclid', 'gclid', 'gclsrc', 'dclid', 'msclkid', 'twclid', 'ttclid',
+  'igshid', 'igsh', 'mibextid',
+  'si', 'feature',
+  'ref', 'ref_src', 'ref_url',
+  'mc_cid', 'mc_eid', 'spm',
+  'share_id', 'is_copy_url', 'is_from_webapp', 'sender_device', 'share_app_id',
+  '_ga', '_gl', 'trk', 'trkcampaign'
+]);
+function sanitizeShareUrlClient(u){
+  if (!u) return u;
+  if (/google\.[a-z.]+\/maps/i.test(u)) {
+    const m = u.match(/!1s0x[0-9a-f]+:0x([0-9a-f]+)/i);
+    if (m) {
+      try { return `https://maps.google.com/?cid=${BigInt('0x' + m[1]).toString(10)}`; } catch { /* fall through */ }
+    }
+    return u.split('?')[0].split('/data=')[0];
   }
-  return u.split('?')[0].split('/data=')[0];
+  try {
+    const parsed = new URL(u);
+    let changed = false;
+    Array.from(parsed.searchParams.keys()).forEach(key => {
+      if (TRACKING_PARAMS_CLIENT.has(key.toLowerCase())) { parsed.searchParams.delete(key); changed = true; }
+    });
+    return changed ? parsed.toString() : u;
+  } catch {
+    return u; // not a parseable absolute URL — leave untouched rather than risk mangling it
+  }
 }
 function linkPreviewLabel(url){
   let hostname, pathname;
