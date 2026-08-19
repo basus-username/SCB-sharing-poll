@@ -115,7 +115,17 @@
     transform:translateY(1px);
   }
   .brand-name{font-family:'Inter',sans-serif;font-weight:500;font-size:15px;letter-spacing:0.1px;line-height:1.15;}
-  .credit{font-size:10px;color:var(--text-muted);letter-spacing:.3px;margin-top:1px;}
+  .credit{
+    font-size:10px;color:var(--text-muted);letter-spacing:.3px;margin-top:1px;
+    /* Optical nudge: "YouVote 2.0" (15px medium) and "By YE Chew" (10px)
+       are both flush-left at the same x, but the wide diagonal stroke of
+       the capital Y reads as starting further left than the B below it.
+       A small indent makes the B line up with roughly where the Y's
+       stem/tail sits, instead of literal pixel-flush left edges.
+       Adjust this value first if it still looks off — it's a visual
+       call, not something verifiable from code alone. */
+    margin-left:4px;
+  }
   .voter-chip{
     display:flex;align-items:center;gap:6px;
     background:var(--surface);border:1px solid var(--border);
@@ -270,6 +280,21 @@
   }
   .menu-item:last-child{border-bottom:none;}
   .menu-item:active{background:var(--surface-2);}
+  .format-flyout{
+    position:fixed;z-index:80;transform:translate(-50%,-100%);
+    display:flex;gap:2px;padding:4px;border-radius:10px;
+    background:var(--surface-2);border:1px solid var(--border);
+    box-shadow:0 6px 18px rgba(0,0,0,.4);
+  }
+  .format-flyout[hidden]{display:none;}
+  .format-flyout button{
+    width:34px;height:34px;border-radius:7px;border:none;background:transparent;color:var(--text);
+    font-size:14px;display:flex;align-items:center;justify-content:center;
+  }
+  .format-flyout button:active{background:var(--violet-dim);}
+  .format-flyout .fmt-b{font-weight:800;}
+  .format-flyout .fmt-i{font-style:italic;font-family:serif;}
+  .format-flyout .fmt-s{text-decoration:line-through;}
   .menu-divider{height:1px;background:var(--border);margin:4px 0;}
 
   /* ---------- option cards ---------- */
@@ -483,6 +508,7 @@
   }
   .section-tab-btn.active{background:var(--violet);border-color:var(--violet);color:#fff;}
   .section-tab-btn.dragging{opacity:.5;}
+  .section-tab-btn.is-hidden-tab{opacity:.55;border-style:dashed;}
   .section-tab-add{
     flex:0 0 auto;background:transparent;border:1.5px dashed var(--violet-dim);color:var(--violet);
     padding:8px 12px;border-radius:20px;font-size:12.5px;font-weight:700;
@@ -554,6 +580,11 @@
 <button id="temp-undo-banner" class="undo-fab" aria-label="Undo last delete">
   <span class="undo-fab-icon">↺</span><span class="undo-fab-text" id="temp-undo-banner-text"></span>
 </button>
+<div id="format-flyout" class="format-flyout" hidden>
+  <button type="button" class="fmt-b" data-format="**" aria-label="Bold">B</button>
+  <button type="button" class="fmt-i" data-format="*" aria-label="Italic">i</button>
+  <button type="button" class="fmt-s" data-format="~~" aria-label="Strikethrough">S</button>
+</div>
 <div id="app">
   <div class="topbar">
     <div class="brand">
@@ -719,6 +750,7 @@ function openModal(backdrop, opts){
 }
 function closeModal(backdrop){
   if (!backdrop.isConnected) return;
+  hideFormatFlyout(); // the field it was pointing at is about to be removed
   closeOverlay(backdrop._overlayClose || (() => backdrop.remove()));
 }
 /* Swap one modal for another as a single step in a flow (e.g. picking an
@@ -812,6 +844,87 @@ function openPasteLinksModal(onLinksFound){
 function escapeHtml(s){
   return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+/* ---------- lightweight rich text: bold / italic / strikethrough ----------
+   Storage format is plain markdown-style markers (**bold**, *italic*,
+   ~~strikethrough~~) saved straight into the title/subtitle/option-name
+   string fields — no new schema, no separate "formatted" field to keep in
+   sync. escapeHtml() runs FIRST, then the marker regexes run on the
+   already-escaped string — safe because none of &<>"' overlap with *~,
+   so escaping can never create or destroy a marker, and the regexes can
+   never introduce unescaped user text into the DOM. Always use this
+   instead of a bare escapeHtml() everywhere a title/subtitle/option name
+   is displayed as text (not inside an <input value="">, which needs the
+   raw markers so they're editable). */
+function renderFormattedText(s){
+  let out = escapeHtml(s);
+  out = out.replace(/\*\*([^\n]+?)\*\*/g, '<strong>$1</strong>');
+  out = out.replace(/~~([^\n]+?)~~/g, '<del>$1</del>');
+  out = out.replace(/(^|[^*])\*([^\n*]+?)\*(?!\*)/g, '$1<em>$2</em>');
+  return out;
+}
+/* ---------- selection-triggered formatting flyout ----------
+   One static flyout element (see <body>, right after the undo banner) is
+   shared across every eligible field on every screen — attachFormatToolbar()
+   just points it at whichever input currently has a selection, rather than
+   each draw() creating its own copy. Necessary because $app.innerHTML gets
+   fully replaced on every draw(), which would otherwise wipe out and
+   re-create the flyout (and its listeners) constantly; keeping it outside
+   #app means it survives every re-render undisturbed. */
+let formatFlyoutTarget = null;
+function hideFormatFlyout(){
+  const el = document.getElementById('format-flyout');
+  if (el) el.hidden = true;
+  formatFlyoutTarget = null;
+}
+function attachFormatToolbar(inputEl){
+  if (!inputEl) return;
+  const flyout = document.getElementById('format-flyout');
+  if (!flyout) return;
+  const maybeShow = () => {
+    if (inputEl.selectionStart == null || inputEl.selectionStart === inputEl.selectionEnd) {
+      if (formatFlyoutTarget === inputEl) hideFormatFlyout();
+      return;
+    }
+    const r = inputEl.getBoundingClientRect();
+    flyout.style.left = `${Math.min(Math.max(r.left + r.width / 2, 60), window.innerWidth - 60)}px`;
+    flyout.style.top = `${Math.max(r.top - 8, 48)}px`;
+    flyout.hidden = false;
+    formatFlyoutTarget = inputEl;
+  };
+  inputEl.addEventListener('select', maybeShow);
+  inputEl.addEventListener('mouseup', maybeShow);
+  inputEl.addEventListener('touchend', () => setTimeout(maybeShow, 0));
+  inputEl.addEventListener('keyup', maybeShow);
+  // Delayed so a tap ON the flyout's own buttons (which fires blur first)
+  // isn't lost before the button's click handler gets to read the selection.
+  inputEl.addEventListener('blur', () => setTimeout(() => { if (formatFlyoutTarget === inputEl) hideFormatFlyout(); }, 180));
+}
+(function initFormatFlyoutButtons(){
+  const flyout = document.getElementById('format-flyout');
+  if (!flyout) return;
+  flyout.querySelectorAll('[data-format]').forEach(btn => {
+    // Keeps focus/selection on the input instead of letting the tap steal it.
+    btn.addEventListener('mousedown', (e) => e.preventDefault());
+    btn.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+    btn.addEventListener('click', () => {
+      const el = formatFlyoutTarget;
+      if (!el) return;
+      const marker = btn.getAttribute('data-format');
+      const start = el.selectionStart, end = el.selectionEnd;
+      if (start == null || start === end) return;
+      const val = el.value;
+      const selected = val.slice(start, end);
+      const alreadyWrapped = selected.length >= marker.length * 2 && selected.startsWith(marker) && selected.endsWith(marker);
+      const nextSelected = alreadyWrapped ? selected.slice(marker.length, selected.length - marker.length) : `${marker}${selected}${marker}`;
+      el.value = val.slice(0, start) + nextSelected + val.slice(end);
+      el.focus();
+      el.setSelectionRange(start, start + nextSelected.length);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      hideFormatFlyout();
+    });
+  });
+  document.addEventListener('scroll', hideFormatFlyout, true);
+})();
 function initialsOf(name){
   // Spreading a string (rather than indexing with [0]) iterates by Unicode
   // code point, so multi-byte characters — emoji included — come out whole
@@ -1197,6 +1310,7 @@ async function batchAddLinksAsOptions(pollId, links, contextByUrl, sectionId){
    HOME VIEW
    ========================================================= */
 function renderHome(){
+  hideFormatFlyout();
   const recents = getRecents();
   $app.innerHTML = `
     <div class="topbar">
@@ -1267,6 +1381,7 @@ function renderHome(){
 
   const sectionBuilderWrap = document.getElementById('section-builder-wrap');
   const addSectionLink = document.getElementById('add-section-link');
+  attachFormatToolbar(document.getElementById('new-title'));
   function addHomeSectionRow(){
     if (sectionBuilderWrap.children.length >= MAX_SECTIONS) return;
     const div = document.createElement('div');
@@ -1533,6 +1648,10 @@ function renderPollView(id, opts){
   // quick-swipe-to-switch gesture above; a 350ms hold with barely any
   // movement is what tells them apart (see the touch handlers below).
   let tabDragTimer = null, tabDragging = false, tabDragEl = null, tabDragSuppressClick = false;
+  // Whether hidden sections are currently revealed in the tab row. Not
+  // persisted — resets to false every time this poll is opened fresh, so
+  // hidden tabs stay out of the way by default.
+  let showHiddenSections = false;
 
   /* ---------- back-button-closable state for this poll's overlays ---------- */
   function closeMenu(){
@@ -1638,7 +1757,15 @@ function renderPollView(id, opts){
     addRecent(id, pollData.title);
     if (hasSections(pollData)) {
       const list = sectionListOf(pollData);
-      if (!activeSectionId || !list.some(s => s.id === activeSectionId)) activeSectionId = list[0].id;
+      // "Usable" means: still exists, AND either it's not hidden, or hidden
+      // tabs are currently being shown. Otherwise fall back to the first
+      // tab that's actually visible right now (never land on a tab with no
+      // visible pill to represent it).
+      const activeIsUsable = activeSectionId && list.some(s => s.id === activeSectionId && (showHiddenSections || !s.hidden));
+      if (!activeIsUsable) {
+        const fallback = list.find(s => showHiddenSections || !s.hidden) || list[0];
+        activeSectionId = fallback ? fallback.id : null;
+      }
     } else {
       activeSectionId = null;
     }
@@ -1674,6 +1801,7 @@ function renderPollView(id, opts){
 
   function draw(){
     if (!pollData) return;
+    hideFormatFlyout(); // full re-render is about to replace #app — any old target node is going away
     const voter = getVoter();
     const sectioned = hasSections(pollData);
     const sections = sectioned ? sectionListOf(pollData) : [];
@@ -1711,7 +1839,7 @@ function renderPollView(id, opts){
       </div>
 
       <div class="poll-title-row">
-        <h1 class="poll-title">${escapeHtml(pollData.title)}</h1>
+        <h1 class="poll-title">${renderFormattedText(pollData.title)}</h1>
         <button class="chip chip-icon-only" id="more-menu-btn" title="More options" aria-label="More options">⋯</button>
       </div>
       <div class="poll-header">
@@ -1727,7 +1855,7 @@ function renderPollView(id, opts){
             </div>
           `;
         })()}
-        ${pollData.subtitle ? `<div class="poll-subtitle">${escapeHtml(pollData.subtitle)}</div>` : ''}
+        ${pollData.subtitle ? `<div class="poll-subtitle">${renderFormattedText(pollData.subtitle)}</div>` : ''}
         ${menuOpen ? `
           <div class="menu-popover" id="more-menu">
             <button class="menu-item" id="share-btn">🔗 Copy share link</button>
@@ -1737,6 +1865,10 @@ function renderPollView(id, opts){
             ${sectioned
               ? `<button class="menu-item" id="rename-section-btn">✏️ Rename "${escapeHtml(activeSection ? activeSection.name : '')}"</button>`
               : `<button class="menu-item" id="add-first-section-btn">🏷️ Add a section</button>`
+            }
+            ${sectioned && sections.some(s => s.hidden)
+              ? `<button class="menu-item" id="toggle-hidden-tabs-btn">${showHiddenSections ? '🙉 Hide hidden tabs' : `🙈 Show hidden tabs (${sections.filter(s => s.hidden).length})`}</button>`
+              : ''
             }
             <div class="menu-divider"></div>
             <button class="menu-item" id="toggle-multi-btn">🔀 Toggle to ${activeMultiChoice ? 'single' : 'multiple'} choice</button>
@@ -1749,7 +1881,7 @@ function renderPollView(id, opts){
 
       ${sectioned ? `
         <div class="section-tab-row" id="section-tab-row">
-          ${sections.map(s => `<button type="button" class="section-tab-btn ${s.id === activeSectionId ? 'active' : ''}" data-section-tab="${s.id}">${escapeHtml(s.name)}</button>`).join('')}
+          ${sections.filter(s => showHiddenSections || !s.hidden).map(s => `<button type="button" class="section-tab-btn ${s.id === activeSectionId ? 'active' : ''} ${s.hidden ? 'is-hidden-tab' : ''}" data-section-tab="${s.id}">${s.hidden ? '🙈 ' : ''}${escapeHtml(s.name)}</button>`).join('')}
           ${sections.length < MAX_SECTIONS ? `<button type="button" class="section-tab-add" id="section-tab-add" aria-label="Add a section">＋</button>` : ''}
         </div>
       ` : ''}
@@ -1801,6 +1933,10 @@ function renderPollView(id, opts){
     // matching computation, which this must stay consistent with.
     const sectioned = hasSections(pollData);
     const sections = sectioned ? sectionListOf(pollData) : [];
+    // Matches exactly what the tab-row template actually renders (see
+    // draw() above) — must stay in lockstep with that filter, since the
+    // drag-reorder logic below reads pill order straight out of the DOM.
+    const visibleSections = sections.filter(s => showHiddenSections || !s.hidden);
     const sectionOptions = sectioned ? options.filter(o => o.sectionId === activeSectionId) : options;
     const activeSection = sectioned ? sections.find(s => s.id === activeSectionId) : null;
     const activeMultiChoice = sectioned ? !!(activeSection && activeSection.multiChoice) : !!pollData.multiChoice;
@@ -1904,15 +2040,23 @@ function renderPollView(id, opts){
       if (activeSection) openSectionModal(pollId, pollData, options, activeSection, null, { swap: true });
     });
 
-    /* ---------- section tab strip: quick swipe to switch, press-and-hold + drag to reorder ----------
-       Both gestures share one touch listener set so they can never
+    document.getElementById('toggle-hidden-tabs-btn')?.addEventListener('click', () => {
+      showHiddenSections = !showHiddenSections;
+      closeOverlay(closeMenu);
+    });
+
+    /* ---------- section tab strip: quick swipe to switch, press-and-hold + drag to reorder, long-press-without-moving to hide/unhide ----------
+       All three gestures share one touch listener set so they can never
        double-fire on the same touch. A hold under ~350ms with under ~8px
        of movement resolves as a tap (handled by the click listener above)
-       or a swipe (handled on touchend below); holding past 350ms without
-       moving much instead "picks up" that pill so it can be dragged to a
-       new position. Deliberately scoped to just the tab row, never the
-       whole page or the option list, so it can't fight the per-option
-       swipe-to-delete gesture either. */
+       or a swipe (handled on touchend below); holding past 350ms "picks
+       up" that pill. From there, releasing after actually dragging it to
+       a new spot reorders the tabs; releasing without having moved it at
+       all is a plain long-press, which instead toggles that tab's hidden
+       state (hide a visible tab, or un-hide one currently shown because
+       "Show hidden tabs" is on). Deliberately scoped to just the tab row,
+       never the whole page or the option list, so it can't fight the
+       per-option swipe-to-delete gesture either. */
     const tabRow = document.getElementById('section-tab-row');
     if (tabRow && sections.length > 1) {
       tabRow.addEventListener('touchstart', (e) => {
@@ -1958,19 +2102,29 @@ function renderPollView(id, opts){
 
         if (tabDragging) {
           tabDragging = false;
-          tabDragEl?.classList.remove('dragging');
+          const heldEl = tabDragEl;
+          heldEl?.classList.remove('dragging');
           tabDragSuppressClick = true; // the click that follows this touch is drag fallout, not a real tap
+          // Compare against visibleSections (what's actually in the DOM),
+          // not the full sections list — a hidden tab that isn't shown
+          // right now would throw the index-by-index comparison off.
           const newOrderIds = Array.from(tabRow.querySelectorAll('.section-tab-btn')).map(el => el.getAttribute('data-section-tab'));
-          const unchanged = newOrderIds.every((sid, i) => sections[i] && sections[i].id === sid);
+          const unchanged = newOrderIds.every((sid, i) => visibleSections[i] && visibleSections[i].id === sid);
           tabDragEl = null;
-          if (!unchanged) {
-            const updates = {};
-            newOrderIds.forEach((sid, i) => { updates[`sections.${sid}.order`] = i; });
-            updateDoc(doc(db, 'polls', pollId), updates).catch(err => {
-              toast(`Could not save the new order: ${err.message || 'unknown error'}`);
-              console.error(err);
-            });
+          if (unchanged) {
+            // Held it down but never actually dragged it anywhere — that's
+            // a long-press, not a reorder. Toggle this tab's hidden state.
+            const sid = heldEl?.getAttribute('data-section-tab');
+            const s = sid && sections.find(x => x.id === sid);
+            if (s) toggleSectionHidden(pollId, pollData, s);
+            return;
           }
+          const updates = {};
+          newOrderIds.forEach((sid, i) => { updates[`sections.${sid}.order`] = i; });
+          updateDoc(doc(db, 'polls', pollId), updates).catch(err => {
+            toast(`Could not save the new order: ${err.message || 'unknown error'}`);
+            console.error(err);
+          });
           return;
         }
 
@@ -2239,6 +2393,7 @@ function renderPollView(id, opts){
       document.getElementById('add-option-btn')?.addEventListener('click', () => addOption(pollId));
       const nameInput = document.getElementById('opt-name');
       const linkInput = document.getElementById('opt-link');
+      attachFormatToolbar(nameInput);
       nameInput?.addEventListener('input', () => { draftName = nameInput.value; });
       linkInput?.addEventListener('input', () => { draftLink = linkInput.value; });
       document.getElementById('notes-toggle-btn')?.addEventListener('click', () => {
@@ -2484,6 +2639,63 @@ function renderPollView(id, opts){
     } finally {
       if (onDone) onDone();
     }
+  }
+
+  /* ---------- hide / un-hide a section tab ----------
+     Distinct from deleting a section: hiding just tucks it out of the tab
+     row (its options and votes are untouched, and it still counts toward
+     MAX_SECTIONS since the data is still there). Triggered by a
+     long-press on the tab pill that doesn't turn into a drag — see the
+     touchend handler above. Un-hiding needs no confirmation since it's
+     purely additive; hiding does, since it's an easy gesture to trigger
+     by accident. */
+  function toggleSectionHidden(pollId, pollData, s){
+    if (s.hidden) {
+      updateDoc(doc(db, 'polls', pollId), { [`sections.${s.id}.hidden`]: false }).catch(err => {
+        toast(`Could not restore "${s.name}": ${err.message || 'unknown error'}`);
+        console.error(err);
+      });
+      pushHistory({
+        label: `Show tab: ${s.name}`,
+        undo: () => updateDoc(doc(db, 'polls', pollId), { [`sections.${s.id}.hidden`]: true }),
+        redo: () => updateDoc(doc(db, 'polls', pollId), { [`sections.${s.id}.hidden`]: false }),
+      });
+      toast(`"${s.name}" is visible again`);
+      return;
+    }
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.innerHTML = `
+      <div class="modal">
+        <h3>Hide "${escapeHtml(s.name)}"?</h3>
+        <p>Its options and votes stay exactly as they are — you can bring it back anytime from the ⋯ menu.</p>
+        <div style="display:flex;gap:10px;">
+          <button class="btn btn-ghost" id="hidesec-cancel" style="flex:1">Cancel</button>
+          <button class="btn" id="hidesec-confirm" style="flex:1;background:var(--violet);color:#fff;">Hide tab</button>
+        </div>
+      </div>
+    `;
+    openModal(backdrop);
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(backdrop); });
+    backdrop.querySelector('#hidesec-cancel').addEventListener('click', () => closeModal(backdrop));
+    backdrop.querySelector('#hidesec-confirm').addEventListener('click', async () => {
+      const btn = backdrop.querySelector('#hidesec-confirm');
+      btn.disabled = true; btn.textContent = 'Hiding…';
+      try {
+        await updateDoc(doc(db, 'polls', pollId), { [`sections.${s.id}.hidden`]: true });
+        closeModal(backdrop);
+        pushHistory({
+          label: `Hide tab: ${s.name}`,
+          undo: () => updateDoc(doc(db, 'polls', pollId), { [`sections.${s.id}.hidden`]: false }),
+          redo: () => updateDoc(doc(db, 'polls', pollId), { [`sections.${s.id}.hidden`]: true }),
+        });
+        toast(`Hid "${s.name}" — tap ↺ to undo`);
+      } catch (err) {
+        toast(`Could not hide "${s.name}": ${err.message || 'unknown error'}`);
+        console.error(err);
+        btn.disabled = false; btn.textContent = 'Hide tab';
+      }
+    });
   }
 
   /* ---------- add / rename a poll section ----------
@@ -2733,6 +2945,7 @@ function renderPollView(id, opts){
       </div>
     `;
     openModal(backdrop);
+    attachFormatToolbar(backdrop.querySelector('#edit-name'));
     backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(backdrop); });
     backdrop.querySelector('#edit-cancel').addEventListener('click', () => closeModal(backdrop));
     backdrop.querySelectorAll('.extra-link-row .link-clear-btn').forEach(btn => {
@@ -2820,6 +3033,8 @@ function renderPollView(id, opts){
     openModal(backdrop, opts);
     const input = backdrop.querySelector('#title-input');
     input.focus();
+    attachFormatToolbar(input);
+    attachFormatToolbar(backdrop.querySelector('#subtitle-input'));
     backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(backdrop); });
     backdrop.querySelector('#title-cancel').addEventListener('click', () => closeModal(backdrop));
     backdrop.querySelector('#title-save').addEventListener('click', async () => {
@@ -3111,7 +3326,7 @@ function optionCardHtml(opt, voter, totalVotes, isLeading, expanded, selectMode,
             : `<div class="vote-btn ${hasVoted ? 'checked' : ''}" aria-hidden="true">${hasVoted ? '✓ Voted' : 'Vote'}</div>`
           }
           ${optionThumbHtml(opt)}
-          <div class="opt-row-text"><div class="opt-title">${escapeHtml(opt.name)}</div></div>
+          <div class="opt-row-text"><div class="opt-title">${renderFormattedText(opt.name)}</div></div>
           <div class="opt-count num">${count}</div>
           <button class="opt-chevron ${expanded ? 'open' : ''}" data-toggle-expand="${opt.id}" aria-label="${expanded ? 'Hide' : 'Show'} details for ${escapeHtml(opt.name)}" aria-expanded="${expanded}">▾</button>
         </div>
