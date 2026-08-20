@@ -103,9 +103,8 @@
   }
   .brand{display:flex;align-items:center;gap:9px;text-decoration:none;}
   .brand-mark{
-    width:30px;height:30px;border-radius:8px;
-    background:linear-gradient(155deg,#8A6BF0,#D162C9 55%,#FFB648);
-    display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;
+    width:30px;height:30px;border-radius:8px;overflow:hidden;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
     /* Optical nudge, not a real misalignment: the two-line text block
        (name + credit) has more visual weight toward its bottom half than
        a flexbox's geometric center accounts for, so a perfectly
@@ -114,6 +113,7 @@
        visible as its own thing. */
     transform:translateY(1px);
   }
+  .brand-mark img{width:100%;height:100%;object-fit:cover;display:block;}
   .brand-name{font-family:'Inter',sans-serif;font-weight:500;font-size:15px;letter-spacing:0.1px;line-height:1.15;}
   .credit{
     font-size:10px;color:var(--text-muted);letter-spacing:.3px;margin-top:1px;
@@ -550,6 +550,35 @@
     text-align:center;color:var(--text-muted);font-size:13.5px;padding:30px 10px;
   }
 
+  /* ---------- boot skeleton ----------
+     Shown as plain static HTML (see <body>) the instant the browser has
+     the HTML — no JS required, so it's already on screen before the
+     Firebase SDK has even finished downloading. It gets removed
+     automatically the moment renderHome()/draw() replace #app's content
+     with the real thing, so there's nothing to manually tear down.
+     This is the screen we actually control — the native Android/Chrome
+     "add to home screen" splash (icon + name, generated from
+     manifest.json) happens a frame before this and isn't something a
+     web page can touch or restyle. */
+  .boot-brand{display:flex;flex-direction:column;align-items:center;gap:10px;padding:38px 0 28px;}
+  .boot-icon{
+    width:56px;height:56px;border-radius:16px;overflow:hidden;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+    box-shadow:0 8px 24px rgba(138,107,240,0.35);
+  }
+  .boot-icon img{width:100%;height:100%;object-fit:cover;display:block;}
+  .boot-brand-name{font-family:'Fraunces',serif;font-weight:600;font-size:20px;}
+  .boot-credit{font-size:11.5px;color:var(--text-muted);letter-spacing:.3px;margin-top:-4px;}
+  .skeleton-bar{
+    border-radius:8px;background:linear-gradient(90deg,var(--surface) 25%,var(--surface-2) 37%,var(--surface) 63%);
+    background-size:400% 100%;animation:skeleton-shimmer 1.4s ease infinite;
+  }
+  @keyframes skeleton-shimmer{0%{background-position:100% 50%;}100%{background-position:0 50%;}}
+  .skeleton-title{height:26px;width:70%;margin:0 auto 10px;}
+  .skeleton-subtitle{height:14px;width:45%;margin:0 auto 26px;}
+  .skeleton-option{height:56px;border-radius:16px;margin-bottom:10px;}
+  @media (prefers-reduced-motion: reduce){.skeleton-bar{animation:none;}}
+
   .modal-backdrop{
     position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:90;padding:20px;
   }
@@ -586,16 +615,16 @@
   <button type="button" class="fmt-s" data-format="~~" aria-label="Strikethrough">S</button>
 </div>
 <div id="app">
-  <div class="topbar">
-    <div class="brand">
-      <div class="brand-mark"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"><rect x="2" y="7" width="20" height="10" rx="5" stroke="#fff" stroke-width="2"/><path d="M8.5 12l2 2 4.5-4.5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <div>
-        <div class="brand-name">YouVote 2.0</div>
-        <div class="credit">By YE Chew</div>
-      </div>
-    </div>
+  <div class="boot-brand">
+    <div class="boot-icon"><img src="/icons/icon-192.png" alt="" width="56" height="56" /></div>
+    <div class="boot-brand-name">YouVote 2.0</div>
+    <div class="boot-credit">By YE Chew</div>
   </div>
-  <div class="empty-state">Loading…</div>
+  <div class="skeleton-bar skeleton-title"></div>
+  <div class="skeleton-bar skeleton-subtitle"></div>
+  <div class="skeleton-bar skeleton-option"></div>
+  <div class="skeleton-bar skeleton-option"></div>
+  <div class="skeleton-bar skeleton-option"></div>
 </div>
 <div id="toast" class="toast"></div>
 
@@ -630,6 +659,29 @@ const db = getFirestore(fbApp);
 /* ---------- helpers ---------- */
 const $app = document.getElementById('app');
 const $toast = document.getElementById('toast');
+
+// Whether we're running as the installed, standalone PWA (added to home
+// screen) vs. a normal browser tab. Used below to change how pasted
+// links (Instagram etc.) get opened — see the comment on IS_STANDALONE's
+// one use site for why.
+const IS_STANDALONE = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+// Same markup as the static boot skeleton in <body> (see index.html above
+// the <script> tag) — reused here so switching routes (e.g. opening a poll
+// link) shows the same branded shimmer instead of falling back to plain
+// "Loading…" text once JS takes over from the static HTML.
+const BOOT_SKELETON_HTML = `
+  <div class="boot-brand">
+    <div class="boot-icon"><img src="/icons/icon-192.png" alt="" width="56" height="56" /></div>
+    <div class="boot-brand-name">YouVote 2.0</div>
+    <div class="boot-credit">By YE Chew</div>
+  </div>
+  <div class="skeleton-bar skeleton-title"></div>
+  <div class="skeleton-bar skeleton-subtitle"></div>
+  <div class="skeleton-bar skeleton-option"></div>
+  <div class="skeleton-bar skeleton-option"></div>
+  <div class="skeleton-bar skeleton-option"></div>
+`;
 
 /* ---------- "Install app" support ----------
    Chrome shows its own automatic install banner, but Brave (and several
@@ -1011,9 +1063,6 @@ function formatDateOption(iso){
   const d = new Date(iso + 'T00:00:00');
   return `${d.getDate()} ${MONTHS[d.getMonth()]}, ${WEEKDAYS[d.getDay()]}`;
 }
-/* ---------- brand mark (inline SVG so it matches the app icon) ---------- */
-const BRAND_ICON_SVG = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none"><rect x="2" y="7" width="20" height="10" rx="5" stroke="#fff" stroke-width="2"/><path d="M8.5 12l2 2 4.5-4.5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-
 /* ---------- per-person colour, consistent across every poll on this device ---------- */
 const PERSON_COLORS = ['#A594F5','#EFB65C','#7FCB98','#E88989','#6FB8E0','#E0A5D8','#C9CE6B','#E39B6B','#8FD0C4','#B8A0F0'];
 function getPersonColor(voterId){
@@ -1179,7 +1228,7 @@ function renderSharePicker(links, recents, contextByUrl){
   $app.innerHTML = `
     <div class="topbar">
       <a href="?" class="brand">
-        <div class="brand-mark">${BRAND_ICON_SVG}</div>
+        <div class="brand-mark"><img src="/icons/icon-192.png" alt="" width="30" height="30" /></div>
         <div><div class="brand-name">YouVote 2.0</div><div class="credit">By YE Chew</div></div>
       </a>
     </div>
@@ -1214,7 +1263,7 @@ function renderShareNewPollPrompt(links, contextByUrl){
   $app.innerHTML = `
     <div class="topbar">
       <a href="?" class="brand">
-        <div class="brand-mark">${BRAND_ICON_SVG}</div>
+        <div class="brand-mark"><img src="/icons/icon-192.png" alt="" width="30" height="30" /></div>
         <div><div class="brand-name">YouVote 2.0</div><div class="credit">By YE Chew</div></div>
       </a>
     </div>
@@ -1315,7 +1364,7 @@ function renderHome(){
   $app.innerHTML = `
     <div class="topbar">
       <div class="brand">
-        <div class="brand-mark">${BRAND_ICON_SVG}</div>
+        <div class="brand-mark"><img src="/icons/icon-192.png" alt="" width="30" height="30" /></div>
         <div>
           <div class="brand-name">YouVote 2.0</div>
           <div class="credit">By YE Chew</div>
@@ -1604,7 +1653,7 @@ function initSwipeToDelete(){
    POLL VIEW
    ========================================================= */
 function renderPollView(id, opts){
-  $app.innerHTML = `<div class="empty-state">Loading poll…</div>`;
+  $app.innerHTML = BOOT_SKELETON_HTML;
   // A single shared link still prefills the add-option form so it can be
   // reviewed before saving (unchanged from before). Several links at once
   // skip that per-item review and get resolved + added straight away, the
@@ -1824,7 +1873,7 @@ function renderPollView(id, opts){
     $app.innerHTML = `
       <div class="topbar">
         <a href="?" class="brand">
-          <div class="brand-mark">${BRAND_ICON_SVG}</div>
+          <div class="brand-mark"><img src="/icons/icon-192.png" alt="" width="30" height="30" /></div>
           <div>
             <div class="brand-name">YouVote 2.0</div>
             <div class="credit">By YE Chew</div>
@@ -3336,7 +3385,7 @@ function optionCardHtml(opt, voter, totalVotes, isLeading, expanded, selectMode,
           ${opt.notes ? `<div class="option-notes">${escapeHtml(opt.notes)}</div>` : ''}
           ${links.length ? `<div class="option-sub" style="display:flex;flex-wrap:wrap;gap:6px;">${links.map((l) => `
             <span class="link-row-item">
-              <a class="link-chip" href="${escapeHtml(l)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(l)}">🔗 ${escapeHtml(linkPreviewLabel(l))} ↗</a>
+              <a class="link-chip" href="${escapeHtml(l)}" ${IS_STANDALONE ? '' : 'target="_blank" rel="noopener noreferrer"'} title="${escapeHtml(l)}">🔗 ${escapeHtml(linkPreviewLabel(l))} ↗</a>
               <button type="button" class="link-copy-btn" data-copy-link="${escapeHtml(l)}" title="Copy link" aria-label="Copy link">📋</button>
             </span>
           `).join('')}</div>` : ''}
