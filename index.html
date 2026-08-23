@@ -126,23 +126,6 @@
        call, not something verifiable from code alone. */
     margin-left:4px;
   }
-  .voter-chip{
-    display:flex;align-items:center;gap:6px;
-    background:var(--surface);border:1px solid var(--border);
-    border-radius:20px;padding:5px 10px 5px 6px;font-size:12.5px;color:var(--text-muted);
-  }
-  .voter-avatar{
-    width:20px;height:20px;border-radius:50%;background:var(--violet);
-    color:var(--bg);font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center;
-    font-family:'JetBrains Mono',monospace;
-  }
-  /* ---------- Poll-page voter row (v14) ----------
-     Poll view no longer has a topbar (brand row) — see .footer-credit
-     below. The voter chip / "Set your name" button that used to share
-     that row now sits alone, right-aligned directly under the "⋯" menu
-     button in .poll-title-row, instead of at the very top of the page. */
-  .voter-row{display:flex;justify-content:flex-end;margin:8px 0 4px;}
-
   /* ---------- Poll-page footer credit (v14) ----------
      Replaces the old top-left icon+"YouVote 2.0"+"By YE Chew" brand row
      on the poll page (still present on Home — see renderHome). Centered
@@ -272,7 +255,7 @@
     position:sticky;top:0;z-index:30;
     background:linear-gradient(180deg,var(--violet-tint) 0%,rgba(37,31,56,0.55) 65%,rgba(37,31,56,0) 100%);
     display:flex;align-items:center;justify-content:space-between;gap:10px;
-    margin:0 -16px 0;padding:14px 16px 14px;
+    margin:0 -16px 0;padding:12px 16px 4px;
   }
   .poll-title-row .poll-title{margin:0;flex:1;min-width:0;word-break:break-word;}
   .poll-title-row .chip-icon-only{flex-shrink:0;}
@@ -1909,14 +1892,6 @@ function renderPollView(id, opts){
         <h1 class="poll-title">${renderFormattedText(pollData.title)}</h1>
         <button class="chip chip-icon-only" id="more-menu-btn" title="More options" aria-label="More options">⋯</button>
       </div>
-      <div class="voter-row">
-        ${voter ? `
-          <div class="voter-chip" id="voter-chip">
-            <div class="voter-avatar" style="background:${getPersonColor(voter.id)};">${escapeHtml(voter.initials)}</div>
-            ${escapeHtml(voter.name)}
-          </div>
-        ` : `<button class="btn btn-ghost btn-sm" id="set-voter-btn">Set your name</button>`}
-      </div>
       <div class="poll-header">
         ${(() => {
           const iab = detectInAppBrowser();
@@ -1933,6 +1908,8 @@ function renderPollView(id, opts){
         ${pollData.subtitle ? `<div class="poll-subtitle">${renderFormattedText(pollData.subtitle)}</div>` : ''}
         ${menuOpen ? `
           <div class="menu-popover" id="more-menu">
+            <button class="menu-item" id="voter-identity-btn">👤 ${voter ? `${escapeHtml(voter.name)} — tap to rename` : 'Set your name'}</button>
+            <div class="menu-divider"></div>
             <button class="menu-item" id="share-btn">🔗 Copy share link</button>
             <button class="menu-item" id="edit-title-btn">✏️ Edit poll title</button>
             <button class="menu-item" id="copy-results-btn">📋 Share results</button>
@@ -1950,6 +1927,8 @@ function renderPollView(id, opts){
             <button class="menu-item" id="bulk-select-btn">🗑️ Select options to delete</button>
             <button class="menu-item" id="merge-identity-btn">🙋 Claim votes from a previous name</button>
             ${hasMessyLinks ? `<button class="menu-item" id="clean-links-btn">🧹 Sanitize sharing links</button>` : ''}
+            <div class="menu-divider"></div>
+            <button class="menu-item" id="go-home-btn">🏠 Back to home</button>
           </div>
         ` : ''}
       </div>
@@ -2019,19 +1998,29 @@ function renderPollView(id, opts){
 
     document.getElementById('poll-undo-fab')?.addEventListener('click', performUndo);
     document.getElementById('poll-redo-fab')?.addEventListener('click', performRedo);
-    const setVoterBtn = document.getElementById('set-voter-btn');
-    const voterChip = document.getElementById('voter-chip');
-    if (setVoterBtn) setVoterBtn.addEventListener('click', () => askVoterName(() => draw(), options));
-    if (voterChip) voterChip.addEventListener('click', () => askVoterName(async (v) => {
-      // renaming relabels this person's existing votes in this poll — it
-      // never creates a duplicate voter or changes what they voted for.
-      const toUpdate = options.filter(o => o.votes && o.votes[v.id]);
-      await Promise.all(toUpdate.map(o => updateDoc(doc(db, 'polls', pollId, 'options', o.id), {
-        [`votes.${v.id}.name`]: v.name,
-        [`votes.${v.id}.initials`]: v.initials
-      })));
+    document.getElementById('voter-identity-btn')?.addEventListener('click', () => {
+      menuOpen = false;
       draw();
-    }));
+      askVoterName(async (v) => {
+        // Relabels this person's existing votes in this poll if they had
+        // any under this id — a no-op for a first-time name (nothing to
+        // relabel yet). Never creates a duplicate voter.
+        const toUpdate = options.filter(o => o.votes && o.votes[v.id]);
+        await Promise.all(toUpdate.map(o => updateDoc(doc(db, 'polls', pollId, 'options', o.id), {
+          [`votes.${v.id}.name`]: v.name,
+          [`votes.${v.id}.initials`]: v.initials
+        })));
+        draw();
+      }, options);
+    });
+
+    document.getElementById('go-home-btn')?.addEventListener('click', () => {
+      // A real navigation (not an SPA-style re-render) — matches how every
+      // other poll<->home transition in this app works (see the
+      // href="?poll=..." links on Home's recent-item cards), so there's no
+      // need to separately tear down this poll's onSnapshot listeners.
+      location.href = location.pathname;
+    });
 
     document.getElementById('add-toggle-btn')?.addEventListener('click', () => {
       addExpanded = true;
