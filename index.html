@@ -1397,7 +1397,7 @@ async function resolveNameForLink(link, context){
 async function batchAddLinksAsOptions(pollId, links, contextByUrl, sectionId){
   const names = await Promise.all(links.map(async (link) => {
     const { name, url, thumbnail } = await resolveNameForLink(link, contextByUrl && contextByUrl[link]);
-    const cleanUrl = sanitizeShareUrlClient(url); // safety net in case the server-side sanitize didn't stick
+    const cleanUrl = cleanShareUrlClient(url); // safety net in case the server-side sanitize didn't stick
     const payload = {
       name, notes: '', link: cleanUrl, links: [cleanUrl], thumbnail: thumbnail || null,
       isDate: false, votes: {}, createdAt: serverTimestamp()
@@ -1921,7 +1921,7 @@ function renderPollView(id, opts){
     const totalVotes = sectionOptions.reduce((sum, o) => sum + voteCount(o), 0);
     // Whole-poll (not just this tab) — options added before the link-cleaning
     // logic existed can still be carrying the long, tracking-param-laden URL.
-    const hasMessyLinks = options.some(o => optionLinks(o).some(l => l !== sanitizeShareUrlClient(l)));
+    const hasMessyLinks = options.some(o => optionLinks(o).some(l => l !== cleanShareUrlClient(l)));
     const allSelected = selectMode && sectionOptions.length > 0 && sectionOptions.every(o => selectedIds.has(o.id));
 
     $app.innerHTML = `
@@ -2254,12 +2254,12 @@ function renderPollView(id, opts){
     document.getElementById('clean-links-btn')?.addEventListener('click', async () => {
       menuOpen = false;
       draw();
-      const dirty = options.filter(o => optionLinks(o).some(l => l !== sanitizeShareUrlClient(l)));
+      const dirty = options.filter(o => optionLinks(o).some(l => l !== cleanShareUrlClient(l)));
       if (!dirty.length) return;
       toast(`Sanitizing ${dirty.length} link${dirty.length===1?'':'s'}…`);
       try {
         await Promise.all(dirty.map(o => {
-          const cleaned = optionLinks(o).map(sanitizeShareUrlClient);
+          const cleaned = optionLinks(o).map(cleanShareUrlClient);
           return updateDoc(doc(db, 'polls', pollId, 'options', o.id), {
             links: cleaned, link: cleaned[0] || null
           });
@@ -2690,7 +2690,7 @@ function renderPollView(id, opts){
     const name = document.getElementById('opt-name').value.trim();
     const link = document.getElementById('opt-link').value.trim();
     const extraLinks = Array.from(document.querySelectorAll('.extra-link-input')).map(el => el.value.trim()).filter(Boolean);
-    const links = [link, ...extraLinks].filter(Boolean).map(sanitizeShareUrlClient);
+    const links = [link, ...extraLinks].filter(Boolean).map(cleanShareUrlClient);
     const notes = document.getElementById('opt-notes').value.trim();
     if (!name) { document.getElementById('opt-name').focus(); return; }
 
@@ -3098,7 +3098,7 @@ function renderPollView(id, opts){
     });
     backdrop.querySelector('#edit-save').addEventListener('click', async () => {
       const name = document.getElementById('edit-name').value.trim();
-      const newLinks = Array.from(backdrop.querySelectorAll('.edit-link-input')).map(el => el.value.trim()).filter(Boolean);
+      const newLinks = Array.from(backdrop.querySelectorAll('.edit-link-input')).map(el => el.value.trim()).filter(Boolean).map(cleanShareUrlClient);
       const notes = document.getElementById('edit-notes').value.trim();
       if (!name) return;
       const btn = backdrop.querySelector('#edit-save');
@@ -3445,12 +3445,20 @@ function optionCardHtml(opt, voter, totalVotes, isLeading, expanded, selectMode,
       ${expanded ? `
         <div class="option-detail">
           ${opt.notes ? `<div class="option-notes">${escapeHtml(opt.notes)}</div>` : ''}
-          ${links.length ? `<div class="option-sub" style="display:flex;flex-wrap:wrap;gap:6px;">${links.map((l) => `
+          ${links.length ? `<div class="option-sub" style="display:flex;flex-wrap:wrap;gap:6px;">${links.map((l) => {
+            // Defensive: a link saved before the paste-extraction fix existed
+            // can still be the raw "caption + URL + trailing text" blob, not
+            // a clean URL. Extract the real URL just for href/label here so
+            // an old, not-yet-tidied option still opens and reads correctly
+            // — "Clean up links" (⋯ menu) is what actually rewrites the
+            // stored data; this is just a display-time safety net.
+            const cleanL = extractFirstUrl(l);
+            return `
             <span class="link-row-item">
-              <a class="link-chip" href="${escapeHtml(l)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(l)}">🔗 ${escapeHtml(linkPreviewLabel(l))} ↗</a>
-              <button type="button" class="link-copy-btn" data-copy-link="${escapeHtml(l)}" title="Copy link" aria-label="Copy link">📋</button>
+              <a class="link-chip" href="${escapeHtml(cleanL)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(cleanL)}">🔗 ${escapeHtml(linkPreviewLabel(cleanL))} ↗</a>
+              <button type="button" class="link-copy-btn" data-copy-link="${escapeHtml(cleanL)}" title="Copy link" aria-label="Copy link">📋</button>
             </span>
-          `).join('')}</div>` : ''}
+          `; }).join('')}</div>` : ''}
           <div class="option-bottom">
             <div class="voter-tokens">
               ${voterEntries.map(([id, v]) => {
@@ -3509,6 +3517,15 @@ function sanitizeShareUrlClient(u){
   } catch {
     return u; // not a parseable absolute URL — leave untouched rather than risk mangling it
   }
+}
+/* Combines both cleaning steps into one call: pull the actual URL out of
+   whatever text it's embedded in, then strip tracking params / expand
+   Maps links. Used everywhere a link gets saved OR displayed, so a link
+   saved before this fix existed (full caption + URL stored as-is) heals
+   itself the next time it's cleaned or re-rendered, not just newly-added
+   ones. */
+function cleanShareUrlClient(u){
+  return sanitizeShareUrlClient(extractFirstUrl(u));
 }
 function linkPreviewLabel(url){
   let hostname, pathname;
