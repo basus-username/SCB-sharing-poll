@@ -426,20 +426,18 @@
      without shifting anything visually — DO NOT DEVIATE: keep the
      padding/margin pair matched 1:1 *on each individual side* (top
      padding = top margin's magnitude, etc.), or the button will visually
-     shift. v16 made this uniform (8px all sides); direct feedback was
-     still too small specifically on "Suggest" — asymmetric this round:
-     grown hardest on top (16px) and right (14px), since those are the
-     two directions people were actually missing the tap (up toward the
-     Name field, right into the empty rest of the row before "Hide"
-     appears). Left/bottom stayed modest (8px/10px) since those weren't
-     flagged as a problem. Row gap widened 20px → 32px so "Suggest"'s
-     bigger rightward reach (14px) plus "Hide"'s own leftward reach
-     (10px, unchanged proportionally) still leave a clear buffer instead
-     of the two overlapping. */
-  .ai-suggest-row{margin:-9px 0 0;display:flex;align-items:center;gap:32px;flex-wrap:wrap;}
+     shift. v17 made this asymmetric (heavier top/right on Suggest);
+     still not enough on the right for either button per direct feedback
+     — both grown further rightward this round: Suggest 14px → 20px,
+     Hide 8px → 24px (Hide's right side has nothing next to it, so it
+     was safe to grow generously there with no overlap risk). Row gap
+     widened 32px → 44px to keep a clear buffer between Suggest's bigger
+     rightward reach (20px) and Hide's own leftward reach (10px,
+     unchanged) — the two invisible hit boxes still don't meet. */
+  .ai-suggest-row{margin:-9px 0 0;display:flex;align-items:center;gap:44px;flex-wrap:wrap;}
   .ai-suggest-btn{
     background:transparent;border:none;color:var(--text-muted);font-size:11px;font-weight:500;
-    padding:16px 14px 10px 8px;margin:-16px -14px -10px -8px;text-align:left;white-space:nowrap;
+    padding:16px 20px 10px 8px;margin:-16px -20px -10px -8px;text-align:left;white-space:nowrap;
     display:inline-flex;align-items:center;
   }
   .ai-suggest-btn:active{color:var(--text);}
@@ -447,7 +445,7 @@
   #ai-suggest-results:not(:empty){margin:6px 0 0;display:flex;flex-wrap:wrap;gap:6px;}
   .ai-suggest-close{
     background:transparent;border:none;color:var(--text-muted);font-size:11px;font-weight:500;
-    padding:16px 8px 10px 10px;margin:-16px -8px -10px -10px;
+    padding:16px 24px 10px 10px;margin:-16px -24px -10px -10px;
   }
   .ai-suggest-close:active{color:var(--text);}
   .ai-suggest-chip{
@@ -473,6 +471,14 @@
      inside the field itself rather than the bulkier link-clear-btn box ---------- */
   .field-wrap{position:relative;}
   .field-wrap .field-clearable{padding-right:34px;}
+  /* Hides the browser's own native dropdown-arrow indicator that Chrome/
+     Android renders on any <input list="..."> wired to a <datalist> (the
+     "white triangle" — same pseudo-element Chromium uses for date-picker
+     icons). It was crowding the same corner as our own ✕ button and
+     throwing that button visually off-center — our custom "✨Suggest"
+     flow + the datalist's own native autocomplete dropdown (still works
+     on tap/focus) don't need this separate arrow affordance too. */
+  .field-clearable::-webkit-calendar-picker-indicator{display:none;margin:0;}
   .field-x{
     position:absolute;right:5px;top:50%;transform:translateY(-50%);
     width:22px;height:22px;border:none;background:transparent;color:var(--text-muted);
@@ -2619,7 +2625,7 @@ function renderPollView(id, opts){
       const res = await fetch(`/api/resolve-link?url=${encodeURIComponent(link)}`);
       const data = await res.json();
       if (!res.ok || !data.name) {
-        statusEl.textContent = data.error || "Couldn't read a name from that link — type it in below.";
+        statusEl.textContent = data.error || 'Could not find a name in that link. Type it in above.';
         draftThumbnail = null;
         return;
       }
@@ -3572,7 +3578,7 @@ function textOptionFormHtml(draftName, draftLink, notesExpanded){
       <div id="ai-suggest-results"></div>
     </div>
     <div class="field-group">
-      <label class="field-label">Paste a link (optional)</label>
+      <label class="field-label">Paste Link</label>
       <div class="autofill-row">
         <input id="opt-link" class="field" placeholder="e.g. Maps, XHS, IG link" value="${escapeHtml(draftLink || '')}" />
         <button id="clear-link-btn" class="link-clear-btn" type="button" aria-label="Clear link">✕</button>
