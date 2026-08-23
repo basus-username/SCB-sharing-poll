@@ -136,6 +136,26 @@
     color:var(--bg);font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center;
     font-family:'JetBrains Mono',monospace;
   }
+  /* ---------- Poll-page voter row (v14) ----------
+     Poll view no longer has a topbar (brand row) — see .footer-credit
+     below. The voter chip / "Set your name" button that used to share
+     that row now sits alone, right-aligned directly under the "⋯" menu
+     button in .poll-title-row, instead of at the very top of the page. */
+  .voter-row{display:flex;justify-content:flex-end;margin:8px 0 4px;}
+
+  /* ---------- Poll-page footer credit (v14) ----------
+     Replaces the old top-left icon+"YouVote 2.0"+"By YE Chew" brand row
+     on the poll page (still present on Home — see renderHome). Centered
+     (not bottom-left) so it never sits under the always-present undo/redo
+     history-fab pair, which already occupies the bottom-left/right
+     corners at bottom:18px. Non-interactive: it's a credit line, not a
+     tappable link back Home (use the existing "⋯" menu / browser back for
+     that). */
+  .footer-credit{
+    position:fixed;left:0;right:0;bottom:6px;z-index:12;
+    text-align:center;color:var(--text-muted);font-size:10px;opacity:.5;
+    pointer-events:none;
+  }
 
   /* ---------- Home ---------- */
   .hero-compact{color:var(--text-muted);font-size:12.5px;line-height:1.4;margin:0 0 14px;}
@@ -164,7 +184,7 @@
     background:var(--surface);border:1px solid var(--border);
     border-radius:var(--radius);padding:14px;margin-bottom:12px;
   }
-  .field-label{font-size:12.5px;color:var(--text);margin-bottom:4px;display:block;font-weight:700;}
+  .field-label{font-size:12.5px;color:var(--text);margin-bottom:6px;display:block;font-weight:700;}
   .field-label-sub{font-size:11px;color:var(--violet);font-weight:400;margin:0 0 8px;display:block;line-height:1.35;}
   .field{
     width:100%;background:var(--surface-2);border:1.5px solid var(--border);
@@ -401,17 +421,37 @@
   .add-option-head h3{margin:0;font-size:14px;font-family:'Inter',sans-serif;font-weight:700;color:var(--violet);}
   .add-collapse-btn{background:transparent;border:none;color:var(--text-muted);font-size:12.5px;font-weight:600;padding:4px;}
   .add-option-card .field{background:var(--surface-2);border-color:var(--violet-dim);}
-  .ai-suggest-row{margin:-13px 0 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+
+  /* ---------- field-group: standardized spacing unit for the add-option
+     drawer (v14) ----------
+     Each logical group (Name+suggest / Link+extra-links / Notes) gets one
+     consistent 22px gap after it, instead of the old mix of negative
+     margins and per-element paddings that made "Name" and "Paste a link"
+     read as ambiguously close together. Labels inside a group always sit
+     flush with a fixed 6px gap under them — this is the "standardize
+     spacing within the titles" fix: every field-label now has the exact
+     same rhythm relative to its own input, regardless of which group. */
+  .field-group{margin-bottom:22px;}
+  .field-group:last-of-type{margin-bottom:16px;}
+
+  /* Tucks the row up against the Name field it belongs to (not the link
+     field below it) while giving it a real, comfortably-tappable hit box.
+     The 6px/4px padding + matching negative margin grows the invisible tap
+     area without shifting anything visually — this is what fixes "options"
+     not responding to taps: the old 2px-tall padding gave the whole phrase
+     under a ~18px hit box, well below a comfortable ~36px+ tap target. */
+  .ai-suggest-row{margin:-9px 0 0;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
   .ai-suggest-btn{
-    background:transparent;border:none;color:var(--violet);font-size:12px;font-weight:400;
-    padding:2px 0;text-align:left;
+    background:transparent;border:none;color:var(--violet);font-size:11px;font-weight:500;
+    padding:6px 4px;margin:-6px -4px;text-align:left;white-space:nowrap;
+    display:inline-flex;align-items:center;
   }
   .ai-suggest-btn:active{color:var(--text);}
   .ai-suggest-btn:disabled{opacity:0.6;}
-  #ai-suggest-results:not(:empty){margin:2px 0 14px;display:flex;flex-wrap:wrap;gap:6px;}
+  #ai-suggest-results:not(:empty){margin:6px 0 0;display:flex;flex-wrap:wrap;gap:6px;}
   .ai-suggest-close{
-    background:transparent;border:none;color:var(--text-muted);font-size:12px;font-weight:500;
-    padding:6px 0;
+    background:transparent;border:none;color:var(--text-muted);font-size:11px;font-weight:500;
+    padding:6px 4px;margin:-6px -4px;
   }
   .ai-suggest-close:active{color:var(--text);}
   .ai-suggest-chip{
@@ -429,8 +469,8 @@
   }
   .link-clear-btn:active{background:var(--violet-dim);color:var(--text);}
   .add-link-btn{
-    background:transparent;border:none;color:var(--violet);font-size:12px;font-weight:400;
-    padding:6px 0 22px;text-align:left;display:block;
+    background:transparent;border:none;color:var(--violet);font-size:11px;font-weight:500;
+    padding:8px 4px 0;margin:0 -4px;text-align:left;display:inline-block;
   }
 
   /* ---------- small inline clear (✕) for text fields — minimal, sits
@@ -659,12 +699,6 @@ const db = getFirestore(fbApp);
 /* ---------- helpers ---------- */
 const $app = document.getElementById('app');
 const $toast = document.getElementById('toast');
-
-// Whether we're running as the installed, standalone PWA (added to home
-// screen) vs. a normal browser tab. Used below to change how pasted
-// links (Instagram etc.) get opened — see the comment on IS_STANDALONE's
-// one use site for why.
-const IS_STANDALONE = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 
 // Same markup as the static boot skeleton in <body> (see index.html above
 // the <script> tag) — reused here so switching routes (e.g. opening a poll
@@ -1871,25 +1905,17 @@ function renderPollView(id, opts){
     const allSelected = selectMode && sectionOptions.length > 0 && sectionOptions.every(o => selectedIds.has(o.id));
 
     $app.innerHTML = `
-      <div class="topbar">
-        <a href="?" class="brand">
-          <div class="brand-mark"><img src="/icons/icon-192.png" alt="" width="30" height="30" /></div>
-          <div>
-            <div class="brand-name">YouVote 2.0</div>
-            <div class="credit">By YE Chew</div>
-          </div>
-        </a>
+      <div class="poll-title-row">
+        <h1 class="poll-title">${renderFormattedText(pollData.title)}</h1>
+        <button class="chip chip-icon-only" id="more-menu-btn" title="More options" aria-label="More options">⋯</button>
+      </div>
+      <div class="voter-row">
         ${voter ? `
           <div class="voter-chip" id="voter-chip">
             <div class="voter-avatar" style="background:${getPersonColor(voter.id)};">${escapeHtml(voter.initials)}</div>
             ${escapeHtml(voter.name)}
           </div>
         ` : `<button class="btn btn-ghost btn-sm" id="set-voter-btn">Set your name</button>`}
-      </div>
-
-      <div class="poll-title-row">
-        <h1 class="poll-title">${renderFormattedText(pollData.title)}</h1>
-        <button class="chip chip-icon-only" id="more-menu-btn" title="More options" aria-label="More options">⋯</button>
       </div>
       <div class="poll-header">
         ${(() => {
@@ -1970,6 +1996,7 @@ function renderPollView(id, opts){
 
       <button class="history-fab history-fab-left" id="poll-undo-fab" title="Nothing to undo yet" aria-label="Undo" disabled>↺</button>
       <button class="history-fab history-fab-right" id="poll-redo-fab" title="Nothing to redo" aria-label="Redo" disabled>↻</button>
+      <div class="footer-credit">YouVote 2.0 — By YE Chew</div>
     `;
 
     bindPollEvents(id, pollData, options, voter);
@@ -3385,7 +3412,7 @@ function optionCardHtml(opt, voter, totalVotes, isLeading, expanded, selectMode,
           ${opt.notes ? `<div class="option-notes">${escapeHtml(opt.notes)}</div>` : ''}
           ${links.length ? `<div class="option-sub" style="display:flex;flex-wrap:wrap;gap:6px;">${links.map((l) => `
             <span class="link-row-item">
-              <a class="link-chip" href="${escapeHtml(l)}" ${IS_STANDALONE ? '' : 'target="_blank" rel="noopener noreferrer"'} title="${escapeHtml(l)}">🔗 ${escapeHtml(linkPreviewLabel(l))} ↗</a>
+              <a class="link-chip" href="${escapeHtml(l)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(l)}">🔗 ${escapeHtml(linkPreviewLabel(l))} ↗</a>
               <button type="button" class="link-copy-btn" data-copy-link="${escapeHtml(l)}" title="Copy link" aria-label="Copy link">📋</button>
             </span>
           `).join('')}</div>` : ''}
@@ -3527,32 +3554,38 @@ function addOptionCardHtml(addTab, calState, draftName, draftLink, notesExpanded
 
 function textOptionFormHtml(draftName, draftLink, notesExpanded){
   return `
-    <label class="field-label">Name</label>
-    <div class="field-wrap">
-      <input id="opt-name" class="field field-clearable" placeholder="Option name" list="option-name-suggestions" value="${escapeHtml(draftName || '')}" />
-      <button type="button" class="field-x" data-clear="opt-name" aria-label="Clear name">✕</button>
-    </div>
-    ${optionNameDatalistHtml()}
-    <div class="ai-suggest-row">
-      <button type="button" id="ai-suggest-btn" class="ai-suggest-btn">✨ Suggest options</button>
-    </div>
-    <div id="ai-suggest-results"></div>
-    <label class="field-label">Paste a link (optional)</label>
-    <div class="autofill-row">
-      <input id="opt-link" class="field" placeholder="e.g. Maps, XHS, IG link" value="${escapeHtml(draftLink || '')}" />
-      <button id="clear-link-btn" class="link-clear-btn" type="button" aria-label="Clear link">✕</button>
-      <button id="resolve-btn" class="btn btn-secondary btn-search btn-sm">🔍 Search</button>
-    </div>
-    <p class="autofill-status" id="resolve-status"></p>
-    <div id="extra-links-wrap"></div>
-    <button type="button" id="add-link-btn" class="add-link-btn">＋ Add another link</button>
-    <button type="button" id="notes-toggle-btn" class="notes-toggle-btn ${notesExpanded ? 'expanded' : ''}" aria-expanded="${notesExpanded ? 'true' : 'false'}">
-      <span class="notes-toggle-chevron">›</span> Notes (optional)
-    </button>
-    <div id="notes-wrap" class="notes-wrap ${notesExpanded ? 'expanded' : ''}">
+    <div class="field-group">
+      <label class="field-label">Name</label>
       <div class="field-wrap">
-        <textarea id="opt-notes" class="field field-clearable" placeholder="e.g. good for groups, must book ahead"></textarea>
-        <button type="button" class="field-x field-x-textarea" data-clear="opt-notes" aria-label="Clear notes">✕</button>
+        <input id="opt-name" class="field field-clearable" placeholder="Option name" list="option-name-suggestions" value="${escapeHtml(draftName || '')}" />
+        <button type="button" class="field-x" data-clear="opt-name" aria-label="Clear name">✕</button>
+      </div>
+      ${optionNameDatalistHtml()}
+      <div class="ai-suggest-row">
+        <button type="button" id="ai-suggest-btn" class="ai-suggest-btn">✨ Suggest options</button>
+      </div>
+      <div id="ai-suggest-results"></div>
+    </div>
+    <div class="field-group">
+      <label class="field-label">Paste a link (optional)</label>
+      <div class="autofill-row">
+        <input id="opt-link" class="field" placeholder="e.g. Maps, XHS, IG link" value="${escapeHtml(draftLink || '')}" />
+        <button id="clear-link-btn" class="link-clear-btn" type="button" aria-label="Clear link">✕</button>
+        <button id="resolve-btn" class="btn btn-secondary btn-search btn-sm">🔍 Search</button>
+      </div>
+      <p class="autofill-status" id="resolve-status"></p>
+      <div id="extra-links-wrap"></div>
+      <button type="button" id="add-link-btn" class="add-link-btn">＋ Add another link</button>
+    </div>
+    <div class="field-group">
+      <button type="button" id="notes-toggle-btn" class="notes-toggle-btn ${notesExpanded ? 'expanded' : ''}" aria-expanded="${notesExpanded ? 'true' : 'false'}">
+        <span class="notes-toggle-chevron">›</span> Notes (optional)
+      </button>
+      <div id="notes-wrap" class="notes-wrap ${notesExpanded ? 'expanded' : ''}">
+        <div class="field-wrap">
+          <textarea id="opt-notes" class="field field-clearable" placeholder="e.g. good for groups, must book ahead"></textarea>
+          <button type="button" class="field-x field-x-textarea" data-clear="opt-notes" aria-label="Clear notes">✕</button>
+        </div>
       </div>
     </div>
     <button id="add-option-btn" class="btn btn-primary">Add to poll</button>
