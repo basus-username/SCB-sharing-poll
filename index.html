@@ -167,7 +167,7 @@
     background:var(--surface);border:1px solid var(--border);
     border-radius:var(--radius);padding:14px;margin-bottom:12px;
   }
-  .field-label{font-size:12.5px;color:var(--text);margin-bottom:6px;display:block;font-weight:700;}
+  .field-label{font-size:12.5px;color:var(--violet);margin-bottom:6px;display:block;font-weight:700;}
   .field-label-sub{font-size:11px;color:var(--violet);font-weight:400;margin:0 0 8px;display:block;line-height:1.35;}
   .field{
     width:100%;background:var(--surface-2);border:1.5px solid var(--border);
@@ -424,16 +424,22 @@
      field below it) while giving it a real, comfortably-tappable hit box.
      Padding + a matching negative margin grows the invisible tap area
      without shifting anything visually — DO NOT DEVIATE: keep the
-     padding/margin pair matched 1:1 on each axis, or the button will
-     visually shift. Horizontal padding bumped 4px → 8px (was still too
-     narrow specifically for short labels like "✕ Hide" — a 4px pad on a
-     ~40px-wide word leaves almost no extra tap width). Row gap bumped
-     14px → 20px to compensate, so the two buttons' now-larger invisible
-     hit boxes don't meaningfully overlap each other in the middle. */
-  .ai-suggest-row{margin:-9px 0 0;display:flex;align-items:center;gap:20px;flex-wrap:wrap;}
+     padding/margin pair matched 1:1 *on each individual side* (top
+     padding = top margin's magnitude, etc.), or the button will visually
+     shift. v16 made this uniform (8px all sides); direct feedback was
+     still too small specifically on "Suggest" — asymmetric this round:
+     grown hardest on top (16px) and right (14px), since those are the
+     two directions people were actually missing the tap (up toward the
+     Name field, right into the empty rest of the row before "Hide"
+     appears). Left/bottom stayed modest (8px/10px) since those weren't
+     flagged as a problem. Row gap widened 20px → 32px so "Suggest"'s
+     bigger rightward reach (14px) plus "Hide"'s own leftward reach
+     (10px, unchanged proportionally) still leave a clear buffer instead
+     of the two overlapping. */
+  .ai-suggest-row{margin:-9px 0 0;display:flex;align-items:center;gap:32px;flex-wrap:wrap;}
   .ai-suggest-btn{
-    background:transparent;border:none;color:var(--violet);font-size:11px;font-weight:500;
-    padding:8px 8px;margin:-8px -8px;text-align:left;white-space:nowrap;
+    background:transparent;border:none;color:var(--text-muted);font-size:11px;font-weight:500;
+    padding:16px 14px 10px 8px;margin:-16px -14px -10px -8px;text-align:left;white-space:nowrap;
     display:inline-flex;align-items:center;
   }
   .ai-suggest-btn:active{color:var(--text);}
@@ -441,7 +447,7 @@
   #ai-suggest-results:not(:empty){margin:6px 0 0;display:flex;flex-wrap:wrap;gap:6px;}
   .ai-suggest-close{
     background:transparent;border:none;color:var(--text-muted);font-size:11px;font-weight:500;
-    padding:8px 8px;margin:-8px -8px;
+    padding:16px 8px 10px 10px;margin:-16px -8px -10px -10px;
   }
   .ai-suggest-close:active{color:var(--text);}
   .ai-suggest-chip{
@@ -459,7 +465,7 @@
   }
   .link-clear-btn:active{background:var(--violet-dim);color:var(--text);}
   .add-link-btn{
-    background:transparent;border:none;color:var(--violet);font-size:11px;font-weight:500;
+    background:transparent;border:none;color:var(--text-muted);font-size:11px;font-weight:500;
     padding:8px 4px 0;margin:0 -4px;text-align:left;display:inline-block;
   }
 
@@ -1427,7 +1433,7 @@ function renderHome(){
       <div class="section-label">Recent polls on this device</div>
       <div class="home-filter-row">
         <button type="button" class="home-filter-btn ${homeFilter === 'all' ? 'active' : ''}" data-home-filter="all">All</button>
-        <button type="button" class="home-filter-btn ${homeFilter === 'starred' ? 'active' : ''}" data-home-filter="starred">⭐ Starred</button>
+        <button type="button" class="home-filter-btn ${homeFilter === 'starred' ? 'active' : ''}" data-home-filter="starred" aria-label="Starred">⭐</button>
       </div>
       <div class="swipe-hint">Swipe a poll left to delete</div>
       <div class="recent-list">
