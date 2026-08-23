@@ -895,6 +895,21 @@ function extractLinksWithContext(text){
   return { urls, contextByUrl };
 }
 
+/* Pulls just the first URL out of whatever got pasted into the single
+   "Paste Link" field — people often copy a whole XHS/WhatsApp share
+   message (caption + emoji + link + trailing "Copy and open app to
+   view"), not a clean URL on its own, and a raw fetch to resolve-link
+   with all that extra text attached fails to redirect/resolve. Reuses
+   the same URL-matching regex as the bulk extractor above so both stay
+   in sync. Returns the trimmed original text unchanged if no URL is
+   found in it, so a plain typed name never gets silently blanked. */
+function extractFirstUrl(text){
+  const urlRe = /https?:\/\/[^\s]+/i;
+  const match = (text || '').match(urlRe);
+  if (!match) return (text || '').trim();
+  return match[0].replace(/[)\]>,.!?"'。，！？]+$/, '');
+}
+
 /* ---------- paste-links modal (bulk import from a copied WhatsApp blob) ----------
    Reusable from both the home screen and a poll page. Pass a callback that
    receives (urls, contextByUrl); this function only handles the
@@ -2617,7 +2632,15 @@ function renderPollView(id, opts){
   }
 
   async function resolveLink(){
-    const link = document.getElementById('opt-link').value.trim();
+    const input = document.getElementById('opt-link');
+    const raw = input.value.trim();
+    // Clean whatever's actually in the field down to just the URL first —
+    // covers every path that lands here (paste event, Search button,
+    // clipboard read below) with one fix. If the field shows the cleaned
+    // link update it in the UI too, so the person can see YouVote pulled
+    // out the right thing rather than silently using a value they never see.
+    const link = extractFirstUrl(raw);
+    if (link !== raw) { input.value = link; draftLink = link; }
     const statusEl = document.getElementById('resolve-status');
     if (!link) { statusEl.textContent = 'Paste a link first.'; return; }
     statusEl.textContent = 'Reading link…';
@@ -2635,7 +2658,7 @@ function renderPollView(id, opts){
       draftThumbnail = data.image || null;
       statusEl.textContent = `Found: ${data.name}`;
     } catch (e) {
-      statusEl.textContent = `Couldn't read that link (${e.message || 'network error'}) — type the name in below.`;
+      statusEl.textContent = `Couldn't read that link (${e.message || 'network error'}). Type the name in above.`;
       console.error(e);
     }
   }
@@ -2646,15 +2669,16 @@ function renderPollView(id, opts){
     try {
       const clip = await navigator.clipboard.readText();
       if (clip && clip.trim()) {
-        input.value = clip.trim();
-        draftLink = clip.trim();
+        const cleaned = extractFirstUrl(clip.trim());
+        input.value = cleaned;
+        draftLink = cleaned;
       } else if (!input.value.trim()) {
-        statusEl.textContent = 'Clipboard is empty — copy the link first, then tap this.';
+        statusEl.textContent = 'Clipboard is empty. Copy the link first, then tap this.';
         return;
       }
     } catch (e) {
       if (!input.value.trim()) {
-        statusEl.textContent = "Couldn't read clipboard — paste the link into the field above, then tap this.";
+        statusEl.textContent = "Couldn't read clipboard. Paste the link into the field above, then tap this.";
         input.focus();
         return;
       }
