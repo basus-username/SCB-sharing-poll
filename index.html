@@ -406,27 +406,34 @@
   .add-option-card .field{background:var(--surface-2);border-color:var(--violet-dim);}
 
   /* ---------- field-group: standardized spacing unit for the add-option
-     drawer (v14) ----------
+     drawer (v14, widened v15) ----------
      Each logical group (Name+suggest / Link+extra-links / Notes) gets one
-     consistent 22px gap after it, instead of the old mix of negative
-     margins and per-element paddings that made "Name" and "Paste a link"
-     read as ambiguously close together. Labels inside a group always sit
-     flush with a fixed 6px gap under them — this is the "standardize
-     spacing within the titles" fix: every field-label now has the exact
-     same rhythm relative to its own input, regardless of which group. */
-  .field-group{margin-bottom:22px;}
+     consistent gap after it, instead of the old mix of negative margins
+     and per-element paddings that made "Name" and "Paste a link" read as
+     ambiguously close together. 22px → 32px — direct screenshot feedback
+     that even the standardized 22px gap still read as one packed block,
+     making it hard to tell where "Name" ended and "Paste a link" began.
+     Labels inside a group always sit flush with a fixed 6px gap under
+     them — this is the "standardize spacing within the titles" fix: every
+     field-label now has the exact same rhythm relative to its own input,
+     regardless of which group. */
+  .field-group{margin-bottom:32px;}
   .field-group:last-of-type{margin-bottom:16px;}
 
   /* Tucks the row up against the Name field it belongs to (not the link
      field below it) while giving it a real, comfortably-tappable hit box.
-     The 6px/4px padding + matching negative margin grows the invisible tap
-     area without shifting anything visually — this is what fixes "options"
-     not responding to taps: the old 2px-tall padding gave the whole phrase
-     under a ~18px hit box, well below a comfortable ~36px+ tap target. */
-  .ai-suggest-row{margin:-9px 0 0;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+     Padding + a matching negative margin grows the invisible tap area
+     without shifting anything visually — DO NOT DEVIATE: keep the
+     padding/margin pair matched 1:1 on each axis, or the button will
+     visually shift. Horizontal padding bumped 4px → 8px (was still too
+     narrow specifically for short labels like "✕ Hide" — a 4px pad on a
+     ~40px-wide word leaves almost no extra tap width). Row gap bumped
+     14px → 20px to compensate, so the two buttons' now-larger invisible
+     hit boxes don't meaningfully overlap each other in the middle. */
+  .ai-suggest-row{margin:-9px 0 0;display:flex;align-items:center;gap:20px;flex-wrap:wrap;}
   .ai-suggest-btn{
     background:transparent;border:none;color:var(--violet);font-size:11px;font-weight:500;
-    padding:6px 4px;margin:-6px -4px;text-align:left;white-space:nowrap;
+    padding:8px 8px;margin:-8px -8px;text-align:left;white-space:nowrap;
     display:inline-flex;align-items:center;
   }
   .ai-suggest-btn:active{color:var(--text);}
@@ -434,7 +441,7 @@
   #ai-suggest-results:not(:empty){margin:6px 0 0;display:flex;flex-wrap:wrap;gap:6px;}
   .ai-suggest-close{
     background:transparent;border:none;color:var(--text-muted);font-size:11px;font-weight:500;
-    padding:6px 4px;margin:-6px -4px;
+    padding:8px 8px;margin:-8px -8px;
   }
   .ai-suggest-close:active{color:var(--text);}
   .ai-suggest-chip{
@@ -541,9 +548,12 @@
   /* ---------- section builder (home screen create card + add/rename modal) ----------
      Deliberately understated: a small text link rather than a prominent
      button, since most polls won't use sections at all — this keeps the
-     default single-poll flow exactly as clutter-free as before. */
+     default single-poll flow exactly as clutter-free as before. Weight
+     700 → 500 and the label shortened (v15 — was wrapping to two lines
+     and reading as a heavier, more prominent element than intended for
+     something this secondary). */
   .add-section-link{
-    background:transparent;border:none;color:var(--violet);font-size:12.5px;font-weight:700;
+    background:transparent;border:none;color:var(--violet);font-size:12.5px;font-weight:500;
     padding:0 0 14px;text-align:left;display:block;
   }
   .section-builder-row{display:flex;gap:6px;align-items:stretch;margin-bottom:10px;}
@@ -1407,7 +1417,7 @@ function renderHome(){
     <div class="card">
       <label class="field-label" for="new-title">Poll title</label>
       <input id="new-title" class="field" placeholder="e.g. Next outing?" maxlength="60" />
-      <button type="button" class="add-section-link" id="add-section-link">🏷️ Add a section (e.g. separate Dates + Food voting)</button>
+      <button type="button" class="add-section-link" id="add-section-link">🏷️ Add a section (e.g. Dates + Food)</button>
       <div id="section-builder-wrap"></div>
       <button id="create-btn" class="btn btn-primary">Create poll</button>
       <button id="home-paste-links-btn" class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px;">📋 Paste from WhatsApp</button>
@@ -2544,7 +2554,7 @@ function renderPollView(id, opts){
           toast('Could not get suggestions — check your connection');
           console.error(e);
         } finally {
-          btn.disabled = false; btn.textContent = '✨ Suggest options';
+          btn.disabled = false; btn.textContent = '✨Suggest';
         }
       });
       document.getElementById('resolve-btn')?.addEventListener('click', () => pasteAndResolve());
@@ -3551,7 +3561,7 @@ function textOptionFormHtml(draftName, draftLink, notesExpanded){
       </div>
       ${optionNameDatalistHtml()}
       <div class="ai-suggest-row">
-        <button type="button" id="ai-suggest-btn" class="ai-suggest-btn">✨ Suggest options</button>
+        <button type="button" id="ai-suggest-btn" class="ai-suggest-btn">✨Suggest</button>
       </div>
       <div id="ai-suggest-results"></div>
     </div>
