@@ -277,9 +277,12 @@
   .poll-title{font-size:21px;margin:0 0 4px;font-weight:500;letter-spacing:0.1px;}
   .poll-title-row{
     position:sticky;top:0;z-index:30;
-    background:var(--bg);border-bottom:1px solid var(--border);
+    background:linear-gradient(180deg,var(--violet-tint) 0%,rgba(37,31,56,.55) 65%,rgba(37,31,56,0) 100%);
     display:flex;align-items:center;justify-content:space-between;gap:10px;
-    margin:0 -16px 0;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 8px;
+    margin:0 -16px 0;padding:calc(12px + env(safe-area-inset-top,0px)) 16px 4px;
+  }
+  :root[data-theme="light"] .poll-title-row{
+    background:linear-gradient(180deg,var(--violet-tint) 0%,rgba(232,223,246,.55) 65%,rgba(232,223,246,0) 100%);
   }
   .title-actions{display:flex;align-items:center;gap:6px;flex-shrink:0;}
   .title-actions .chip{height:32px;min-width:34px;justify-content:center;}
@@ -339,6 +342,8 @@
   }
   @keyframes sheet-up{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}
   @media (prefers-reduced-motion: reduce){.sheet{animation:none;}}
+  .sheet-grip{margin:-8px -16px 0;padding:16px 0 0;height:44px;box-sizing:border-box;touch-action:none;cursor:grab;}
+  .sheet-grip .sheet-handle{margin:0 auto;}
   .sheet-handle{width:38px;height:4px;border-radius:2px;background:var(--border);margin:2px auto 10px;}
   .sheet-voter{
     width:100%;display:flex;align-items:center;gap:10px;min-height:48px;padding:8px 12px;
@@ -2075,7 +2080,7 @@ function renderPollView(id, opts){
       ${menuOpen ? `
         <div class="sheet-backdrop" id="sheet-backdrop"></div>
         <div class="sheet" id="more-menu" role="dialog" aria-label="Poll menu">
-          <div class="sheet-handle"></div>
+          <div class="sheet-grip" id="sheet-grip"><div class="sheet-handle"></div></div>
           <button class="sheet-voter" id="voter-identity-btn"><span class="sheet-ic">${svgIcon(ICONS.user)}</span><span class="nm">${voter ? escapeHtml(voter.name) : 'Set your name'}</span><small>${voter ? 'tap to rename' : 'tap to set'}</small></button>
           <div class="sheet-group-label">Share</div>
           <div class="sheet-grid">
@@ -2480,6 +2485,44 @@ function renderPollView(id, opts){
 
     document.getElementById('themeToggleBtn')?.addEventListener('click', toggleTheme);
     document.getElementById('sheet-backdrop')?.addEventListener('click', () => closeOverlay(closeMenu));
+    (function bindSheetDrag(){
+      const sheet = document.getElementById('more-menu');
+      const grip = document.getElementById('sheet-grip');
+      const back = document.getElementById('sheet-backdrop');
+      if (!sheet || !grip) return;
+      const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      let y0 = 0, dy = 0, t0 = 0, dragging = false;
+      grip.addEventListener('pointerdown', (e) => {
+        dragging = true; y0 = e.clientY; t0 = e.timeStamp; dy = 0;
+        try { grip.setPointerCapture(e.pointerId); } catch (_) {}
+        sheet.style.animation = 'none'; sheet.style.transition = 'none';
+      });
+      grip.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        dy = Math.max(0, e.clientY - y0);
+        sheet.style.transform = 'translateY(' + dy + 'px)';
+        if (back) back.style.opacity = String(1 - Math.min(1, dy / Math.max(1, sheet.offsetHeight)));
+      });
+      const end = (e) => {
+        if (!dragging) return;
+        dragging = false;
+        const speed = dy / Math.max(1, e.timeStamp - t0); // px per ms
+        const farEnough = dy > sheet.offsetHeight * 0.3;
+        const flicked = dy > 12 && speed > 0.6;
+        if (farEnough || flicked) {
+          if (reduce) { if (menuOpen) closeOverlay(closeMenu); return; }
+          sheet.style.transition = 'transform .16s ease-in';
+          sheet.style.transform = 'translateY(100%)';
+          setTimeout(() => { if (menuOpen) closeOverlay(closeMenu); }, 150);
+        } else {
+          sheet.style.transition = reduce ? 'none' : 'transform .16s ease-out';
+          sheet.style.transform = '';
+          if (back) back.style.opacity = '';
+        }
+      };
+      grip.addEventListener('pointerup', end);
+      grip.addEventListener('pointercancel', end);
+    })();
     document.getElementById('more-menu-btn')?.addEventListener('click', () => {
       if (menuOpen) {
         closeOverlay(closeMenu);
