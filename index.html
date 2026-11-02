@@ -27,7 +27,7 @@
 <meta name="twitter:image" content="https://scb-youvote-pikachew.vercel.app/icons/icon-192.png" />
 
 <link rel="manifest" href="/manifest.json" />
-<meta name="theme-color" content="#141319" />
+<meta name="theme-color" id="themeColorMeta" content="#141319" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="YouVote 2.0" />
@@ -37,8 +37,23 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<script>
+(function(){
+  try {
+    var t = localStorage.getItem('youvote_theme');
+    if (!t) t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    if (t === 'light') {
+      document.documentElement.setAttribute('data-theme','light');
+      var m = document.getElementById('themeColorMeta');
+      if (m) m.setAttribute('content','#FAF9FC');
+    }
+  } catch(e){}
+})();
+</script>
 <style>
   :root{
+    color-scheme:dark;
+    --on-rose:#2a1010; --on-green:#0d1a10; --on-gold:#3a2705;
     --bg:#141319;
     --surface:#1E1C27;
     --surface-2:#2E2A3D;
@@ -55,6 +70,15 @@
     --green:#7FCB98;
     --radius:16px;
     --radius-sm:10px;
+  }
+  :root[data-theme="light"]{
+    color-scheme:light;
+    --bg:#FAF9FC; --surface:#FFFFFF; --surface-2:#EFEBF5;
+    --border:#DCD6E8; --text:#221F2E; --text-muted:#726C87;
+    --violet:#7C5FE0; --violet-dim:#E1D6F5; --violet-tint:#E8DFF6;
+    --gold:#B07C1E; --gold-dim:#F8E8CC;
+    --rose:#C74C53; --rose-dim:#F5D6D8; --green:#2C8A4E;
+    --on-rose:#fff; --on-green:#fff; --on-gold:#fff;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -204,7 +228,7 @@
   .swipe-wrap{position:relative;border-radius:var(--radius-sm);overflow:hidden;}
   .swipe-delete{
     position:absolute;top:0;right:0;bottom:0;width:76px;border:none;
-    background:var(--rose);color:#2a1010;font-size:19px;
+    background:var(--rose);color:var(--on-rose);font-size:19px;
     display:flex;align-items:center;justify-content:center;
   }
   .recent-item{
@@ -248,15 +272,18 @@
   /* ---------- Poll view ---------- */
   .poll-header{
     margin:0 -16px 12px;padding:0 16px 8px;
-    background:linear-gradient(180deg,rgba(37,31,56,0.4) 0%,rgba(37,31,56,0) 100%);
+    background:linear-gradient(180deg,rgba(124,95,224,0.07) 0%,rgba(124,95,224,0) 100%);
   }
   .poll-title{font-size:21px;margin:0 0 4px;font-weight:500;letter-spacing:0.1px;}
   .poll-title-row{
     position:sticky;top:0;z-index:30;
-    background:linear-gradient(180deg,var(--violet-tint) 0%,rgba(37,31,56,0.55) 65%,rgba(37,31,56,0) 100%);
+    background:var(--bg);border-bottom:1px solid var(--border);
     display:flex;align-items:center;justify-content:space-between;gap:10px;
-    margin:0 -16px 0;padding:12px 16px 4px;
+    margin:0 -16px 0;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 8px;
   }
+  .title-actions{display:flex;align-items:center;gap:6px;flex-shrink:0;}
+  .title-actions .chip{height:32px;min-width:34px;justify-content:center;}
+  .title-actions .chip svg{display:block;}
   .poll-title-row .poll-title{margin:0;flex:1;min-width:0;word-break:break-word;}
   .poll-title-row .chip-icon-only{flex-shrink:0;}
   .poll-subtitle{font-size:12.5px;color:var(--text-muted);margin:3px 0 0;white-space:pre-wrap;word-break:break-word;}
@@ -300,6 +327,38 @@
   .format-flyout .fmt-s{text-decoration:line-through;}
   .menu-divider{height:1px;background:var(--border);margin:4px 0;}
 
+  /* ---------- poll menu bottom sheet ---------- */
+  .sheet-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:70;}
+  .sheet{
+    position:fixed;left:0;right:0;bottom:0;z-index:71;
+    background:var(--surface);border-top:1px solid var(--border);
+    border-radius:16px 16px 0 0;max-height:70vh;overflow-y:auto;overscroll-behavior:contain;
+    padding:8px 16px calc(16px + env(safe-area-inset-bottom,0px));
+    box-shadow:0 -8px 28px rgba(0,0,0,.35);
+    animation:sheet-up .18s ease-out;
+  }
+  @keyframes sheet-up{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}
+  @media (prefers-reduced-motion: reduce){.sheet{animation:none;}}
+  .sheet-handle{width:38px;height:4px;border-radius:2px;background:var(--border);margin:2px auto 10px;}
+  .sheet-voter{
+    width:100%;display:flex;align-items:center;gap:10px;min-height:48px;padding:8px 12px;
+    background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);
+    color:var(--text);font-size:13.5px;font-weight:600;text-align:left;
+  }
+  .sheet-voter .sheet-ic{color:var(--violet);display:flex;}
+  .sheet-voter small{color:var(--text-muted);font-weight:400;font-size:12px;margin-left:auto;white-space:nowrap;}
+  .sheet-voter span.nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .sheet-group-label{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--text-muted);margin:14px 2px 6px;}
+  .sheet-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+  .sheet-tile{
+    min-height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
+    padding:8px 4px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);
+    color:var(--text);font-size:12px;font-weight:500;text-align:center;line-height:1.2;
+  }
+  .sheet-tile:active,.sheet-voter:active{background:var(--violet-dim);}
+  .sheet-tile .sheet-ic{color:var(--violet);display:flex;}
+  .sheet-tile .sheet-lbl{word-break:break-word;}
+
   /* ---------- option cards ---------- */
   .option-card{
     background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
@@ -335,10 +394,10 @@
     font-size:9px;font-weight:800;letter-spacing:.1px;text-transform:uppercase;padding:0 5px;
     transition:background .15s,border-color .15s,color .15s;
   }
-  .vote-btn.checked{background:var(--green);border-color:var(--green);color:#0d1a10;}
+  .vote-btn.checked{background:var(--green);border-color:var(--green);color:var(--on-green);}
   .select-check{
     min-width:30px;width:30px;height:30px;border-radius:9px;border:1.5px solid var(--border);
-    background:var(--bg);color:#0d1a10;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+    background:var(--bg);color:var(--on-green);flex-shrink:0;display:flex;align-items:center;justify-content:center;
     font-weight:800;font-size:14px;transition:background .15s,border-color .15s;
   }
   .select-check.checked{background:var(--violet);border-color:var(--violet);color:#fff;}
@@ -384,7 +443,7 @@
   .swipe-wrap-option .option-card{margin-bottom:0;touch-action:pan-y;will-change:transform;}
   .swipe-delete-option{
     position:absolute;top:0;right:0;bottom:0;width:76px;border:none;
-    background:var(--rose);color:#2a1010;font-size:19px;
+    background:var(--rose);color:var(--on-rose);font-size:19px;
     display:flex;align-items:center;justify-content:center;
     transition:font-size .15s ease;
   }
@@ -456,7 +515,11 @@
   .autofill-row{display:flex;gap:6px;align-items:stretch;}
   .autofill-row .field{margin-bottom:0;flex:1;min-width:0;}
   .btn-secondary{background:var(--surface-2);color:var(--violet);border:1px solid var(--violet-dim);}
-  .btn-search{color:var(--text);border-color:var(--violet);background:var(--violet-dim);}
+  .btn-search{color:var(--text);border-color:var(--violet);background:var(--violet-dim);display:inline-flex;align-items:center;justify-content:center;gap:6px;}
+  .btn-search svg{display:block;flex-shrink:0;}
+  .btn-search.is-searching{animation:search-pulse 1.4s ease-in-out infinite;pointer-events:none}
+  @keyframes search-pulse{0%,100%{opacity:1}50%{opacity:.55}}
+  @media (prefers-reduced-motion: reduce){.btn-search.is-searching{animation:none;opacity:.8}}
   .link-clear-btn{
     flex-shrink:0;width:40px;background:var(--surface-2);border:1.5px solid var(--border);
     color:var(--text-muted);border-radius:var(--radius-sm);font-size:14px;padding:0;
@@ -506,13 +569,13 @@
   #extra-links-wrap:not(:empty){margin-top:12px;}
   .history-fab{
     position:fixed;bottom:18px;z-index:40;width:34px;height:34px;border-radius:50%;
-    background:var(--gold);color:#3a2705;border:none;font-size:16px;font-weight:800;
+    background:var(--gold);color:var(--on-gold);border:none;font-size:16px;font-weight:800;
     display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(0,0,0,0.35);
     opacity:0.92;transition:opacity .15s,transform .1s;
   }
   .fab-badge{
     position:absolute;top:-4px;right:-4px;min-width:15px;height:15px;padding:0 3px;border-radius:8px;
-    background:var(--rose);color:#2a0f0f;font-size:9px;font-weight:800;
+    background:var(--rose);color:var(--on-rose);font-size:9px;font-weight:800;
     display:flex;align-items:center;justify-content:center;line-height:1;
   }
   .history-fab:active{transform:scale(0.92);}
@@ -823,6 +886,62 @@ window.addEventListener('popstate', () => {
   closeFn();
 });
 
+/* ---------- theme (device-local, never synced) ---------- */
+const SUN_ICON = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg>`;
+const MOON_ICON = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11Z"/></svg>`;
+function getTheme(){
+  try { var t = localStorage.getItem('youvote_theme'); if (t === 'light' || t === 'dark') return t; } catch(e){}
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+function applyThemeColorMeta(theme){
+  var m = document.getElementById('themeColorMeta');
+  if (m) m.setAttribute('content', theme === 'light' ? '#FAF9FC' : '#141319');
+}
+function toggleTheme(){
+  var next = getTheme() === 'light' ? 'dark' : 'light';
+  try { localStorage.setItem('youvote_theme', next); } catch(e){}
+  if (next === 'light') document.documentElement.setAttribute('data-theme','light');
+  else document.documentElement.removeAttribute('data-theme');
+  applyThemeColorMeta(next);
+  var b = document.getElementById('themeToggleBtn');
+  if (b) b.innerHTML = next === 'light' ? MOON_ICON : SUN_ICON;
+}
+applyThemeColorMeta(getTheme());
+
+/* ---------- line icons (stroke 1.8, currentColor) ---------- */
+function svgIcon(inner, size){
+  const z = size || 20;
+  return `<svg width="${z}" height="${z}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+}
+const ICONS = {
+  user:    '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>',
+  link:    '<path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/>',
+  share:   '<path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/>',
+  bell:    '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+  pencil:  '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Z"/><path d="M13.5 6.5l4 4"/>',
+  tag:     '<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.2"/>',
+  choice:  '<path d="M4 6l2 2 3-3"/><path d="M4 16l2 2 3-3"/><path d="M13 7h7"/><path d="M13 17h7"/>',
+  trash:   '<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/>',
+  claim:   '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20v-1a5 5 0 0 1 5-5h3"/><path d="M15 17l2 2 4-4"/>',
+  home:    '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/>',
+  eye:     '<path d="M2.5 12S6 6 12 6s9.5 6 9.5 6-3.5 6-9.5 6S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/>',
+  eyeoff:  '<path d="M3 3l18 18"/><path d="M10.6 6.1A9.8 9.8 0 0 1 12 6c6 0 9.5 6 9.5 6a16 16 0 0 1-3.2 3.9"/><path d="M6.3 7.6A15.7 15.7 0 0 0 2.5 12S6 18 12 18c1.5 0 2.8-.4 4-.9"/>',
+  sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8Z"/><path d="M19 17v4M17 19h4"/>',
+  search:  '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>'
+};
+const SEARCH_ICON = svgIcon(ICONS.search, 15);
+
+/* ---------- Search button state (module-level so re-renders keep it) ---------- */
+let linkResolving = false;
+function setSearchBtnState(on){
+  linkResolving = on;
+  const b = document.getElementById('resolve-btn');
+  if (!b) return;
+  b.classList.toggle('is-searching', on);
+  b.setAttribute('aria-busy', on ? 'true' : 'false');
+  b.innerHTML = SEARCH_ICON + (on ? ' Searching…' : ' Search');
+}
+
 /* ---------- modal helpers (built on the overlay stack above) ---------- */
 function openModal(backdrop, opts){
   document.body.appendChild(backdrop);
@@ -922,7 +1041,7 @@ function openPasteLinksModal(onLinksFound){
       <h3>Paste links</h3>
       <p>In WhatsApp: long-press a message with a link, tap more messages to select them too, then tap Copy. Paste the whole thing below — YouVote will pull out every link and use any nearby caption to help name them.</p>
       <textarea id="paste-links-input" class="field" rows="6" placeholder="Paste copied WhatsApp messages here…" style="min-height:120px;resize:vertical;"></textarea>
-      <p id="paste-links-error" style="color:#ff8686;font-size:13px;display:none;margin-top:-4px;"></p>
+      <p id="paste-links-error" style="color:var(--rose);font-size:13px;display:none;margin-top:-4px;"></p>
       <div style="display:flex;gap:10px;">
         <button class="btn btn-ghost" id="paste-links-cancel" style="flex:1">Cancel</button>
         <button class="btn btn-primary" id="paste-links-add" style="flex:1">Add links</button>
@@ -1723,6 +1842,9 @@ function renderPollView(id, opts){
 
   let pollData = null;
   let options = [];
+  // bindPollEvents() receives `options` as a parameter (a snapshot from the last draw),
+  // so anything that runs later (undo/redo) reads the live list through this getter.
+  const getLiveOptions = () => options;
   let menuOpen = false;
   let addTab = 'text';
   let addExpanded = !!prefillLink;
@@ -1760,7 +1882,9 @@ function renderPollView(id, opts){
   function closeMenu(){
     if (!menuOpen) return;
     menuOpen = false;
+    const y = window.scrollY;
     draw();
+    window.scrollTo(0, y);
   }
   function closeAddPanel(){
     if (!addExpanded) return;
@@ -1927,7 +2051,10 @@ function renderPollView(id, opts){
     $app.innerHTML = `
       <div class="poll-title-row">
         <h1 class="poll-title">${renderFormattedText(pollData.title)}</h1>
-        <button class="chip chip-icon-only" id="more-menu-btn" title="More options" aria-label="More options">⋯</button>
+        <div class="title-actions">
+          <button class="chip chip-icon-only" id="themeToggleBtn" title="Switch theme" aria-label="Switch theme">${getTheme() === 'light' ? MOON_ICON : SUN_ICON}</button>
+          <button class="chip chip-icon-only" id="more-menu-btn" title="More options" aria-label="More options">⋯</button>
+        </div>
       </div>
       <div class="poll-header">
         ${(() => {
@@ -1943,32 +2070,41 @@ function renderPollView(id, opts){
           `;
         })()}
         ${pollData.subtitle ? `<div class="poll-subtitle">${renderFormattedText(pollData.subtitle)}</div>` : ''}
-        ${menuOpen ? `
-          <div class="menu-popover" id="more-menu">
-            <button class="menu-item" id="voter-identity-btn">👤 ${voter ? `${escapeHtml(voter.name)} — tap to rename` : 'Set your name'}</button>
-            <div class="menu-divider"></div>
-            <button class="menu-item" id="share-btn">🔗 Copy share link</button>
-            <button class="menu-item" id="edit-title-btn">✏️ Edit poll title</button>
-            <button class="menu-item" id="copy-results-btn">📋 Share results</button>
-            <button class="menu-item" id="remind-btn">🔔 Remind everyone (WhatsApp)</button>
+      </div>
+
+      ${menuOpen ? `
+        <div class="sheet-backdrop" id="sheet-backdrop"></div>
+        <div class="sheet" id="more-menu" role="dialog" aria-label="Poll menu">
+          <div class="sheet-handle"></div>
+          <button class="sheet-voter" id="voter-identity-btn"><span class="sheet-ic">${svgIcon(ICONS.user)}</span><span class="nm">${voter ? escapeHtml(voter.name) : 'Set your name'}</span><small>${voter ? 'tap to rename' : 'tap to set'}</small></button>
+          <div class="sheet-group-label">Share</div>
+          <div class="sheet-grid">
+            <button class="sheet-tile" id="share-btn"><span class="sheet-ic">${svgIcon(ICONS.link)}</span><span class="sheet-lbl">Copy link</span></button>
+            <button class="sheet-tile" id="copy-results-btn"><span class="sheet-ic">${svgIcon(ICONS.share)}</span><span class="sheet-lbl">Share results</span></button>
+            <button class="sheet-tile" id="remind-btn"><span class="sheet-ic">${svgIcon(ICONS.bell)}</span><span class="sheet-lbl">Remind everyone</span></button>
+          </div>
+          <div class="sheet-group-label">Poll</div>
+          <div class="sheet-grid">
+            <button class="sheet-tile" id="edit-title-btn"><span class="sheet-ic">${svgIcon(ICONS.pencil)}</span><span class="sheet-lbl">Edit title</span></button>
             ${sectioned
-              ? `<button class="menu-item" id="rename-section-btn">✏️ Rename "${escapeHtml(activeSection ? activeSection.name : '')}"</button>`
-              : `<button class="menu-item" id="add-first-section-btn">🏷️ Add a section</button>`
+              ? `<button class="sheet-tile" id="rename-section-btn"><span class="sheet-ic">${svgIcon(ICONS.tag)}</span><span class="sheet-lbl">Rename “${escapeHtml(activeSection ? activeSection.name : '')}”</span></button>`
+              : `<button class="sheet-tile" id="add-first-section-btn"><span class="sheet-ic">${svgIcon(ICONS.tag)}</span><span class="sheet-lbl">Add a section</span></button>`
             }
+            <button class="sheet-tile" id="toggle-multi-btn"><span class="sheet-ic">${svgIcon(ICONS.choice)}</span><span class="sheet-lbl">${activeMultiChoice ? 'Make single choice' : 'Make multiple choice'}</span></button>
             ${sectioned && sections.some(s => s.hidden)
-              ? `<button class="menu-item" id="toggle-hidden-tabs-btn">${showHiddenSections ? '🙉 Hide hidden tabs' : `🙈 Show hidden tabs (${sections.filter(s => s.hidden).length})`}</button>`
+              ? `<button class="sheet-tile" id="toggle-hidden-tabs-btn"><span class="sheet-ic">${svgIcon(showHiddenSections ? ICONS.eyeoff : ICONS.eye)}</span><span class="sheet-lbl">${showHiddenSections ? 'Hide hidden tabs' : `Show hidden tabs (${sections.filter(s => s.hidden).length})`}</span></button>`
               : ''
             }
-            <div class="menu-divider"></div>
-            <button class="menu-item" id="toggle-multi-btn">🔀 Toggle to ${activeMultiChoice ? 'single' : 'multiple'} choice</button>
-            <button class="menu-item" id="bulk-select-btn">🗑️ Select options to delete</button>
-            <button class="menu-item" id="merge-identity-btn">🙋 Claim votes from a previous name</button>
-            ${hasMessyLinks ? `<button class="menu-item" id="clean-links-btn">🧹 Sanitize sharing links</button>` : ''}
-            <div class="menu-divider"></div>
-            <button class="menu-item" id="go-home-btn">🏠 Back to home</button>
           </div>
-        ` : ''}
-      </div>
+          <div class="sheet-group-label">More</div>
+          <div class="sheet-grid">
+            <button class="sheet-tile" id="bulk-select-btn"><span class="sheet-ic">${svgIcon(ICONS.trash)}</span><span class="sheet-lbl">Delete options</span></button>
+            <button class="sheet-tile" id="merge-identity-btn"><span class="sheet-ic">${svgIcon(ICONS.claim)}</span><span class="sheet-lbl">Claim votes</span></button>
+            <button class="sheet-tile" id="go-home-btn"><span class="sheet-ic">${svgIcon(ICONS.home)}</span><span class="sheet-lbl">Back to home</span></button>
+            ${hasMessyLinks ? `<button class="sheet-tile" id="clean-links-btn"><span class="sheet-ic">${svgIcon(ICONS.sparkle)}</span><span class="sheet-lbl">Sanitize links</span></button>` : ''}
+          </div>
+        </div>
+      ` : ''}
 
       ${sectioned ? `
         <div class="section-tab-row" id="section-tab-row">
@@ -1996,7 +2132,7 @@ function renderPollView(id, opts){
           </div>
           <div class="bulk-bar-actions">
             <button class="btn btn-ghost btn-xs" id="bulk-cancel-btn">Cancel</button>
-            <button class="btn btn-xs" id="bulk-delete-btn" style="background:var(--rose);color:#2a0f0f;" ${selectedIds.size ? '' : 'disabled'}>🗑️ Delete${selectedIds.size ? ` ${selectedIds.size}` : ''}</button>
+            <button class="btn btn-xs" id="bulk-delete-btn" style="background:var(--rose);color:var(--on-rose);" ${selectedIds.size ? '' : 'disabled'}>🗑️ Delete${selectedIds.size ? ` ${selectedIds.size}` : ''}</button>
           </div>
         </div>
       ` : (sectionOptions.length ? `<div class="swipe-hint">Swipe an option left to delete</div>` : '')}
@@ -2342,13 +2478,17 @@ function renderPollView(id, opts){
       openEditTitleModal(pollId, pollData.title, pollData.subtitle, { swap: true });
     });
 
+    document.getElementById('themeToggleBtn')?.addEventListener('click', toggleTheme);
+    document.getElementById('sheet-backdrop')?.addEventListener('click', () => closeOverlay(closeMenu));
     document.getElementById('more-menu-btn')?.addEventListener('click', () => {
       if (menuOpen) {
         closeOverlay(closeMenu);
       } else {
         menuOpen = true;
         pushOverlay(closeMenu);
+        const y = window.scrollY;
         draw();
+        window.scrollTo(0, y);
       }
     });
 
@@ -2391,7 +2531,11 @@ function renderPollView(id, opts){
         const voterObj = { name: voter.name, initials: voter.initials };
         await Promise.all(sectionOptions.map(o => {
           const shouldHave = votedIds.includes(o.id);
-          const has = !!(o.votes && o.votes[voterKey]);
+          // Read the LIVE option, not the copy captured when this closure was
+          // created: undo/redo run after later re-renders, and the stale copy
+          // made them silently skip every write.
+          const live = getLiveOptions().find(x => x.id === o.id) || o;
+          const has = !!(live.votes && live.votes[voterKey]);
           if (shouldHave === has) return Promise.resolve();
           return updateDoc(doc(db, 'polls', pollId, 'options', o.id), {
             [`votes.${voterKey}`]: shouldHave ? voterObj : deleteField()
@@ -2632,6 +2776,7 @@ function renderPollView(id, opts){
   }
 
   async function resolveLink(){
+    if (linkResolving) return; // paste listener + Search button can both land here
     const input = document.getElementById('opt-link');
     const raw = input.value.trim();
     // Clean whatever's actually in the field down to just the URL first —
@@ -2643,23 +2788,30 @@ function renderPollView(id, opts){
     if (link !== raw) { input.value = link; draftLink = link; }
     const statusEl = document.getElementById('resolve-status');
     if (!link) { statusEl.textContent = 'Paste a link first.'; return; }
-    statusEl.textContent = 'Reading link…';
+    statusEl.textContent = '';
+    setSearchBtnState(true);
+    // A friend's vote can re-render the card mid-fetch, which replaces the
+    // status line node — always write to whichever one is live now.
+    const status = () => document.getElementById('resolve-status') || statusEl;
     try {
       const res = await fetch(`/api/resolve-link?url=${encodeURIComponent(link)}`);
       const data = await res.json();
       if (!res.ok || !data.name) {
-        statusEl.textContent = data.error || 'Could not find a name in that link. Type it in above.';
+        status().textContent = data.error || 'Could not find a name in that link. Type it in above.';
         draftThumbnail = null;
         return;
       }
-      document.getElementById('opt-name').value = data.name;
+      const nameEl = document.getElementById('opt-name');
+      if (nameEl) nameEl.value = data.name;
       draftName = data.name;
-      if (data.resolvedUrl) { document.getElementById('opt-link').value = data.resolvedUrl; draftLink = data.resolvedUrl; }
+      if (data.resolvedUrl) { const le = document.getElementById('opt-link'); if (le) le.value = data.resolvedUrl; draftLink = data.resolvedUrl; }
       draftThumbnail = data.image || null;
-      statusEl.textContent = `Found: ${data.name}`;
+      status().textContent = `Found: ${data.name}`;
     } catch (e) {
-      statusEl.textContent = `Couldn't read that link (${e.message || 'network error'}). Type the name in above.`;
+      status().textContent = `Couldn't read that link (${e.message || 'network error'}). Type the name in above.`;
       console.error(e);
+    } finally {
+      setSearchBtnState(false);
     }
   }
 
@@ -3623,7 +3775,7 @@ function textOptionFormHtml(draftName, draftLink, notesExpanded){
       <div class="autofill-row">
         <input id="opt-link" class="field" placeholder="e.g. Maps, XHS, IG link" value="${escapeHtml(draftLink || '')}" />
         <button id="clear-link-btn" class="link-clear-btn" type="button" aria-label="Clear link">✕</button>
-        <button id="resolve-btn" class="btn btn-secondary btn-search btn-sm">🔍 Search</button>
+        <button id="resolve-btn" class="btn btn-secondary btn-search btn-sm${linkResolving ? ' is-searching' : ''}" aria-busy="${linkResolving ? 'true' : 'false'}">${SEARCH_ICON} ${linkResolving ? 'Searching…' : 'Search'}</button>
       </div>
       <p class="autofill-status" id="resolve-status"></p>
       <div id="extra-links-wrap"></div>
