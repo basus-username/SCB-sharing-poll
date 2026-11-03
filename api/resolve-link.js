@@ -150,13 +150,23 @@ const TRACKING_PARAMS = new Set([
   'share_id', 'is_copy_url', 'is_from_webapp', 'sender_device', 'share_app_id',
   '_ga', '_gl', 'trk', 'trkcampaign'
 ]);
+// YV-10: Google's own search params. They only record how the link was produced, so they
+// should not be passed on to friends, and the link opens the same search without them.
+// Stripped on google.com/search only, keeping q and anything else. Must stay in sync with
+// GOOGLE_SEARCH_PARAMS_CLIENT in index.html (the two sanitizers are meant to match).
+const GOOGLE_SEARCH_PARAMS = new Set([
+  'sca_esv', 'ei', 'ved', 'uact', 'oq', 'gs_lp', 'sclient', 'sxsrf', 'biw', 'bih'
+]);
 function sanitizeShareUrl(u) {
   if (isGoogleMapsUrl(u)) return cleanGoogleMapsUrl(u);
   try {
     const parsed = new URL(u);
     let changed = false;
+    // YV-10: exact host and path check, so other Google hosts and every other site behave as before.
+    const isGoogleSearch = /^(www\.)?google\.com$/i.test(parsed.hostname) && /^\/search\/?$/i.test(parsed.pathname);
     Array.from(parsed.searchParams.keys()).forEach((key) => {
-      if (TRACKING_PARAMS.has(key.toLowerCase())) { parsed.searchParams.delete(key); changed = true; }
+      const k = key.toLowerCase();
+      if (TRACKING_PARAMS.has(k) || (isGoogleSearch && GOOGLE_SEARCH_PARAMS.has(k))) { parsed.searchParams.delete(key); changed = true; }
     });
     return changed ? parsed.toString() : u;
   } catch {
