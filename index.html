@@ -172,7 +172,9 @@
     background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);
     padding:8px 8px 8px 12px;margin-bottom:12px;
   }
-  .install-banner-icon{font-size:16px;flex-shrink:0;}
+  /* YV-8: the banner glyph is now a line SVG, so it takes the muted text colour and
+     centres itself instead of relying on emoji font metrics. */
+  .install-banner-icon{font-size:16px;flex-shrink:0;display:flex;color:var(--violet);}
   .install-banner-text{flex:1;color:var(--text-muted);font-size:12px;line-height:1.3;}
   .install-banner-hint{font-size:11px;color:var(--text-muted);flex-shrink:0;max-width:110px;text-align:right;}
   .install-banner-btn{width:auto !important;padding:7px 14px !important;font-size:12.5px !important;flex-shrink:0;}
@@ -355,6 +357,25 @@
   .sheet-voter span.nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .sheet-group-label{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--text-muted);margin:14px 2px 6px;}
   .sheet-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+  /* YV-9: the More group is one row of four (Delete, Sweep, Claim votes, Home).
+     Only this modifier changes, so the Share and Poll groups keep three columns.
+     Tile height stays at the shared min-height:64px; the gap, side padding,
+     label and icon shrink so four fit on a 390px phone. */
+  .sheet-grid-4{grid-template-columns:repeat(4,1fr);gap:6px;}
+  .sheet-grid-4 .sheet-tile{padding:8px 2px;font-size:11px;gap:4px;}
+  /* YV-9: Sweep shows how many links the cleaner would change as a small count
+     badge on the tile, and is greyed out and inert at 0. The badge reuses
+     --violet with white text (the same pair .btn-primary uses), so no new colour. */
+  .sheet-tile{position:relative;}
+  .sheet-tile:disabled{opacity:.45;pointer-events:none;}
+  .sheet-count{
+    position:absolute;top:4px;right:5px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;
+    background:var(--violet);color:#fff;font-size:10px;font-weight:700;line-height:16px;text-align:center;
+  }
+  /* YV-8: a line icon sitting next to a text label (buttons, links, toggles). */
+  .ic-lbl{display:inline-flex;align-items:center;gap:6px;}
+  .ic-lbl svg,.ic-solo svg{display:block;flex-shrink:0;}
+  .ic-solo{display:inline-flex;align-items:center;justify-content:center;}
   .sheet-tile{
     min-height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
     padding:8px 4px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);
@@ -428,6 +449,11 @@
     padding:3px 9px;border-radius:20px 0 0 20px;border-right:none;font-size:11.5px;
     max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   }
+  /* YV-8: the chip is a flex row (icon + label) so the label can still ellipsize
+     inside the 190px max-width now that a line icon replaces the emoji. */
+  .link-chip{display:inline-flex;align-items:center;gap:4px;}
+  .link-chip svg{flex-shrink:0;}
+  .link-chip-lbl{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .link-row-item{display:inline-flex;align-items:stretch;}
   .link-copy-btn{
     color:var(--text-muted);background:rgba(140,122,230,0.12);border:1px solid var(--violet-dim);
@@ -452,7 +478,10 @@
     display:flex;align-items:center;justify-content:center;
     transition:font-size .15s ease;
   }
-  .swipe-wrap-option.swipe-armed .swipe-delete-option{font-size:26px;}
+  /* YV-8: the armed grow effect scaled the emoji with font-size; the trash is an SVG now,
+     so scale it with a transform (26px / 19px is about 1.35). */
+  .swipe-delete-option svg{transition:transform .15s ease;}
+  .swipe-wrap-option.swipe-armed .swipe-delete-option svg{transform:scale(1.35);}
   .swipe-wrap-option.swipe-armed .option-card{filter:brightness(0.92);}
 
   /* ---------- collapsible "add option" control ---------- */
@@ -914,9 +943,12 @@ function toggleTheme(){
 applyThemeColorMeta(getTheme());
 
 /* ---------- line icons (stroke 1.8, currentColor) ---------- */
-function svgIcon(inner, size){
+function svgIcon(inner, size, filled){
   const z = size || 20;
-  return `<svg width="${z}" height="${z}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+  /* YV-8: optional third arg fills the shape with currentColor, used only for the
+     "on" state of the star so starred vs not starred still reads at a glance
+     (it used to switch between the filled and hollow star glyphs). */
+  return `<svg width="${z}" height="${z}" viewBox="0 0 24 24" fill="${filled ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
 }
 const ICONS = {
   user:    '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>',
@@ -932,8 +964,22 @@ const ICONS = {
   eye:     '<path d="M2.5 12S6 6 12 6s9.5 6 9.5 6-3.5 6-9.5 6S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/>',
   eyeoff:  '<path d="M3 3l18 18"/><path d="M10.6 6.1A9.8 9.8 0 0 1 12 6c6 0 9.5 6 9.5 6a16 16 0 0 1-3.2 3.9"/><path d="M6.3 7.6A15.7 15.7 0 0 0 2.5 12S6 18 12 18c1.5 0 2.8-.4 4-.9"/>',
   sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8Z"/><path d="M19 17v4M17 19h4"/>',
-  search:  '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>'
+  search:  '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>',
+  /* YV-8: glyphs added so every UI emoji and text symbol has a line icon in the
+     same style as the sheet menu (24 grid, stroke 1.8 from svgIcon). */
+  close:     '<path d="M6 6l12 12M18 6L6 18"/>',
+  check:     '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  star:      '<path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1.1 5.9L12 17l-5.3 2.7 1.1-5.9L3.5 9.7l5.9-.8Z"/>',
+  pin:       '<path d="M9 4h6l-1 5 3 3H7l3-3-1-5Z"/><path d="M12 12v8"/>',
+  clipboard: '<rect x="6" y="5" width="12" height="16" rx="2"/><path d="M9 5V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/><path d="M9.5 11h5M9.5 15h5"/>',
+  phone:     '<rect x="7" y="2.5" width="10" height="19" rx="2.2"/><path d="M11 18.5h2"/>',
+  /* YV-9: Sweep tile. A broom: handle running up to the right, bristle head at the lower left. */
+  broom:     '<path d="M19.5 3.5l-7 7"/><path d="M11 9l4 4-3.5 6.5c-.4.7-1.3.8-1.9.3L4 15.4c-.6-.5-.5-1.4.2-1.8Z"/><path d="M8 13l3 3"/>'
 };
+/* YV-8: the Suggest button label is set from three places (first render, the
+   "Thinking" state, and restoring after the request), so it lives in one constant to
+   keep the icon and spacing identical in all three. */
+const AI_SUGGEST_LABEL_HTML = `<span class="ic-lbl" style="gap:4px;">${svgIcon(ICONS.sparkle, 13)}Suggest</span>`;
 const SEARCH_ICON = svgIcon(ICONS.search, 15);
 
 /* ---------- Search button state (module-level so re-renders keep it) ---------- */
@@ -958,7 +1004,7 @@ function openModal(backdrop, opts){
     const x = document.createElement('button');
     x.className = 'modal-close';
     x.setAttribute('aria-label', 'Close');
-    x.textContent = '✕';
+    x.innerHTML = svgIcon(ICONS.close, 14); // YV-8: line icon instead of the ✕ text glyph
     x.addEventListener('click', () => closeModal(backdrop));
     modal.prepend(x);
   }
@@ -981,7 +1027,7 @@ function swapModal(oldBackdrop, newBackdrop){
     const x = document.createElement('button');
     x.className = 'modal-close';
     x.setAttribute('aria-label', 'Close');
-    x.textContent = '✕';
+    x.innerHTML = svgIcon(ICONS.close, 14); // YV-8: line icon instead of the ✕ text glyph
     x.addEventListener('click', () => closeModal(newBackdrop));
     modal.prepend(x);
   }
@@ -1213,7 +1259,7 @@ function sectionBuilderRowHtml(name = '', multiChoice = false){
     <div class="section-builder-row" data-section-row>
       <input class="field section-name-input" placeholder="Section name, e.g. Dates" maxlength="30" value="${escapeHtml(name)}" />
       <button type="button" class="section-type-toggle" data-section-multi="${multiChoice ? '1' : '0'}">${multiChoice ? 'Multiple' : 'Single'}</button>
-      <button type="button" class="link-clear-btn" data-remove-section-row aria-label="Remove section">✕</button>
+      <button type="button" class="link-clear-btn" data-remove-section-row aria-label="Remove section">${svgIcon(ICONS.close, 14)}</button>
     </div>
   `;
 }
@@ -1554,31 +1600,31 @@ function renderHome(){
 
     ${(!isStandaloneMode() && !isInstallBannerSnoozed()) ? `
       <div class="install-banner-compact" id="install-banner">
-        <span class="install-banner-icon">📲</span>
+        <span class="install-banner-icon">${svgIcon(ICONS.phone, 18)}</span>
         <span class="install-banner-text">Install as an app</span>
         ${isIOS()
           ? '<span class="install-banner-hint">Share → Add to Home Screen</span>'
           : (deferredInstallPrompt
               ? '<button class="btn btn-primary install-banner-btn" id="install-app-btn">Install</button>'
               : '<button class="install-banner-hint-btn" id="install-manual-btn">How?</button>')}
-        <button class="install-banner-dismiss" id="install-banner-dismiss" aria-label="Dismiss">✕</button>
+        <button class="install-banner-dismiss ic-solo" id="install-banner-dismiss" aria-label="Dismiss">${svgIcon(ICONS.close, 14)}</button>
       </div>
     ` : ''}
 
     <div class="card">
       <label class="field-label" for="new-title">Poll title</label>
       <input id="new-title" class="field" placeholder="e.g. Next outing?" maxlength="60" />
-      <button type="button" class="add-section-link" id="add-section-link">🏷️ Add a section (e.g. Dates + Food)</button>
+      <button type="button" class="add-section-link" id="add-section-link"><span class="ic-lbl">${svgIcon(ICONS.tag, 15)}Add a section (e.g. Dates + Food)</span></button>
       <div id="section-builder-wrap"></div>
       <button id="create-btn" class="btn btn-primary">Create poll</button>
-      <button id="home-paste-links-btn" class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px;">📋 Paste from WhatsApp</button>
+      <button id="home-paste-links-btn" class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px;">${svgIcon(ICONS.clipboard, 15)} Paste from WhatsApp</button>
     </div>
 
     ${recents.length ? `
       <div class="section-label">Recent polls on this device</div>
       <div class="home-filter-row">
         <button type="button" class="home-filter-btn ${homeFilter === 'all' ? 'active' : ''}" data-home-filter="all">All</button>
-        <button type="button" class="home-filter-btn ${homeFilter === 'starred' ? 'active' : ''}" data-home-filter="starred" aria-label="Starred">⭐</button>
+        <button type="button" class="home-filter-btn ${homeFilter === 'starred' ? 'active' : ''}" data-home-filter="starred" aria-label="Starred"><span class="ic-solo">${svgIcon(ICONS.star, 15, homeFilter === 'starred')}</span></button>
       </div>
       <div class="swipe-hint">Swipe a poll left to delete</div>
       <div class="recent-list">
@@ -1587,15 +1633,15 @@ function renderHome(){
           if (!shown.length) return `<div class="empty-starred-hint">No starred polls yet — tap ☆ on a poll to pin it here.</div>`;
           return shown.map(r => `
           <div class="swipe-wrap">
-            <button class="swipe-delete" data-swipe-delete="${r.id}" data-swipe-title="${escapeHtml(r.title)}" aria-label="Delete poll">🗑️</button>
+            <button class="swipe-delete" data-swipe-delete="${r.id}" data-swipe-title="${escapeHtml(r.title)}" aria-label="Delete poll">${svgIcon(ICONS.trash, 20)}</button>
             <a class="recent-item" data-recent-id="${r.id}" href="?poll=${r.id}" draggable="false">
               <div class="recent-item-main">
-                <div class="recent-item-title">${r.pinned ? '📌 ' : ''}${escapeHtml(r.title)}</div>
+                <div class="recent-item-title">${r.pinned ? `<span class="ic-solo recent-pin-mark">${svgIcon(ICONS.pin, 13)}</span> ` : ''}${escapeHtml(r.title)}</div>
                 <div class="recent-item-meta">${new Date(r.ts).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</div>
               </div>
               <div class="recent-item-actions">
-                <button type="button" class="recent-star-btn ${r.starred ? 'active' : ''}" data-star-toggle="${r.id}" aria-label="${r.starred ? 'Unstar poll' : 'Star poll'}">${r.starred ? '⭐' : '☆'}</button>
-                <button type="button" class="recent-pin-btn ${r.pinned ? 'active' : ''}" data-pin-toggle="${r.id}" aria-label="${r.pinned ? 'Unpin poll' : 'Pin poll'}">📌</button>
+                <button type="button" class="recent-star-btn ${r.starred ? 'active' : ''}" data-star-toggle="${r.id}" aria-label="${r.starred ? 'Unstar poll' : 'Star poll'}">${svgIcon(ICONS.star, 17, !!r.starred)}</button>
+                <button type="button" class="recent-pin-btn ${r.pinned ? 'active' : ''}" data-pin-toggle="${r.id}" aria-label="${r.pinned ? 'Unpin poll' : 'Pin poll'}">${svgIcon(ICONS.pin, 17)}</button>
               </div>
               <span class="chevron">›</span>
             </a>
@@ -2029,6 +2075,9 @@ function renderPollView(id, opts){
   onSnapshot(optionsRef, (snap) => {
     options = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     draw();
+    // YV-10: auto-clean after the first options snapshot. The once-per-poll guard lives in
+    // autoCleanPollLinks, so calling it on every snapshot is cheap and cannot loop.
+    autoCleanPollLinks(id, options);
   });
 
   function draw(){
@@ -2050,7 +2099,9 @@ function renderPollView(id, opts){
     const totalVotes = sectionOptions.reduce((sum, o) => sum + voteCount(o), 0);
     // Whole-poll (not just this tab) — options added before the link-cleaning
     // logic existed can still be carrying the long, tracking-param-laden URL.
-    const hasMessyLinks = options.some(o => optionLinks(o).some(l => l !== cleanShareUrlClient(l)));
+    // YV-9/YV-10: Sweep's badge is the number of links the cleaner would change, from the
+    // same detector auto-clean uses (totalDirtyLinks), so the two can never disagree.
+    const sweepCount = totalDirtyLinks(options);
     const allSelected = selectMode && sectionOptions.length > 0 && sectionOptions.every(o => selectedIds.has(o.id));
 
     $app.innerHTML = `
@@ -2070,7 +2121,7 @@ function renderPollView(id, opts){
               <span class="install-banner-icon">↗️</span>
               <span class="install-banner-text">Viewing inside ${iab} — links may not open properly here.</span>
               <button class="install-banner-hint-btn" id="iab-open-btn">Open in browser</button>
-              <button class="install-banner-dismiss" id="iab-dismiss-btn" aria-label="Dismiss">✕</button>
+              <button class="install-banner-dismiss" id="iab-dismiss-btn" aria-label="Dismiss">${svgIcon(ICONS.close, 14)}</button>
             </div>
           `;
         })()}
@@ -2102,18 +2153,21 @@ function renderPollView(id, opts){
             }
           </div>
           <div class="sheet-group-label">More</div>
-          <div class="sheet-grid">
-            <button class="sheet-tile" id="bulk-select-btn"><span class="sheet-ic">${svgIcon(ICONS.trash)}</span><span class="sheet-lbl">Delete options</span></button>
-            <button class="sheet-tile" id="merge-identity-btn"><span class="sheet-ic">${svgIcon(ICONS.claim)}</span><span class="sheet-lbl">Claim votes</span></button>
-            <button class="sheet-tile" id="go-home-btn"><span class="sheet-ic">${svgIcon(ICONS.home)}</span><span class="sheet-lbl">Back to home</span></button>
-            ${hasMessyLinks ? `<button class="sheet-tile" id="clean-links-btn"><span class="sheet-ic">${svgIcon(ICONS.sparkle)}</span><span class="sheet-lbl">Sanitize links</span></button>` : ''}
+          <!-- YV-9: one row of four, fixed order and labels. Sweep is always rendered
+               (it used to appear only when a link looked messy), with a count badge,
+               and is disabled at 0. Ids are unchanged so every handler still binds. -->
+          <div class="sheet-grid sheet-grid-4">
+            <button class="sheet-tile" id="bulk-select-btn"><span class="sheet-ic">${svgIcon(ICONS.trash, 18)}</span><span class="sheet-lbl">Delete</span></button>
+            <button class="sheet-tile" id="clean-links-btn" ${sweepCount ? `aria-label="Sweep, ${sweepCount} link${sweepCount===1?'':'s'} to clean"` : 'disabled aria-label="Sweep, nothing to clean"'}><span class="sheet-ic">${svgIcon(ICONS.broom, 18)}</span><span class="sheet-lbl">Sweep</span>${sweepCount ? `<span class="sheet-count">${sweepCount}</span>` : ''}</button>
+            <button class="sheet-tile" id="merge-identity-btn"><span class="sheet-ic">${svgIcon(ICONS.claim, 18)}</span><span class="sheet-lbl">Claim votes</span></button>
+            <button class="sheet-tile" id="go-home-btn"><span class="sheet-ic">${svgIcon(ICONS.home, 18)}</span><span class="sheet-lbl">Home</span></button>
           </div>
         </div>
       ` : ''}
 
       ${sectioned ? `
         <div class="section-tab-row" id="section-tab-row">
-          ${sections.filter(s => showHiddenSections || !s.hidden).map(s => `<button type="button" class="section-tab-btn ${s.id === activeSectionId ? 'active' : ''} ${s.hidden ? 'is-hidden-tab' : ''}" data-section-tab="${s.id}">${s.hidden ? '🙈 ' : ''}${escapeHtml(s.name)}</button>`).join('')}
+          ${sections.filter(s => showHiddenSections || !s.hidden).map(s => `<button type="button" class="section-tab-btn ${s.id === activeSectionId ? 'active' : ''} ${s.hidden ? 'is-hidden-tab' : ''}" data-section-tab="${s.id}">${s.hidden ? `<span class="ic-solo" style="margin-right:4px;vertical-align:-2px;">${svgIcon(ICONS.eyeoff, 14)}</span>` : ''}${escapeHtml(s.name)}</button>`).join('')}
           ${sections.length < MAX_SECTIONS ? `<button type="button" class="section-tab-add" id="section-tab-add" aria-label="Add a section">＋</button>` : ''}
         </div>
       ` : ''}
@@ -2137,7 +2191,7 @@ function renderPollView(id, opts){
           </div>
           <div class="bulk-bar-actions">
             <button class="btn btn-ghost btn-xs" id="bulk-cancel-btn">Cancel</button>
-            <button class="btn btn-xs" id="bulk-delete-btn" style="background:var(--rose);color:var(--on-rose);" ${selectedIds.size ? '' : 'disabled'}>🗑️ Delete${selectedIds.size ? ` ${selectedIds.size}` : ''}</button>
+            <button class="btn btn-xs" id="bulk-delete-btn" style="background:var(--rose);color:var(--on-rose);" ${selectedIds.size ? '' : 'disabled'}>${svgIcon(ICONS.trash, 14)} Delete${selectedIds.size ? ` ${selectedIds.size}` : ''}</button>
           </div>
         </div>
       ` : (sectionOptions.length ? `<div class="swipe-hint">Swipe an option left to delete</div>` : '')}
@@ -2146,7 +2200,7 @@ function renderPollView(id, opts){
         ${optionCardHtml(opt, voter, totalVotes, voteCount(opt)===topCount && topCount>0, expandedIds.has(opt.id), true, selectedIds.has(opt.id))}
       ` : `
         <div class="swipe-wrap-option">
-          <button class="swipe-delete-option" data-swipe-delete-option="${opt.id}" aria-label="Delete option">🗑️</button>
+          <button class="swipe-delete-option" data-swipe-delete-option="${opt.id}" aria-label="Delete option">${svgIcon(ICONS.trash, 20)}</button>
           ${optionCardHtml(opt, voter, totalVotes, voteCount(opt)===topCount && topCount>0, expandedIds.has(opt.id))}
         </div>
       `).join('')}
@@ -2235,9 +2289,12 @@ function renderPollView(id, opts){
     document.getElementById('remind-btn')?.addEventListener('click', () => {
       const voterCount = new Set(options.flatMap(o => Object.keys(o.votes || {}))).size;
       const socialProof = voterCount > 0
-        ? `${voterCount} ${voterCount === 1 ? 'person has' : 'people have'} voted so far — don't miss out!`
-        : `No one's voted yet — be the first!`;
-      const message = `🗳️ Reminder to vote: "${pollData.title}"\n${socialProof}\n\n${location.href}`;
+        ? `${voterCount} ${voterCount === 1 ? 'person has' : 'people have'} voted so far, so don't miss out!`
+        : `No one's voted yet, be the first!`;
+      // YV-11: the ballot emoji prefix and both em dashes are gone from the WhatsApp text
+      // (the zero-voter line had one too, so the message has no em dash in any case).
+      // A friend's own emoji inside pollData.title is user data and stays as typed.
+      const message = `Reminder to vote: "${pollData.title}"\n${socialProof}\n\n${location.href}`;
       // wa.me with no phone number opens WhatsApp's own chat picker, pre-filled —
       // works whether the recipient has YouVote or not, since it's just a WhatsApp message.
       window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
@@ -2395,9 +2452,11 @@ function renderPollView(id, opts){
     document.getElementById('clean-links-btn')?.addEventListener('click', async () => {
       menuOpen = false;
       draw();
-      const dirty = options.filter(o => optionLinks(o).some(l => l !== cleanShareUrlClient(l)));
+      const dirty = optionsNeedingClean(options);
       if (!dirty.length) return;
-      toast(`Sanitizing ${dirty.length} link${dirty.length===1?'':'s'}…`);
+      // YV-9: counts links, not options, so the toast matches the number on the Sweep badge.
+      const dirtyLinks = totalDirtyLinks(dirty);
+      toast(`Sanitizing ${dirtyLinks} link${dirtyLinks===1?'':'s'}…`);
       try {
         await Promise.all(dirty.map(o => {
           const cleaned = optionLinks(o).map(cleanShareUrlClient);
@@ -2405,7 +2464,7 @@ function renderPollView(id, opts){
             links: cleaned, link: cleaned[0] || null
           });
         }));
-        toast(`Sanitized ${dirty.length} link${dirty.length===1?'':'s'} ✓`);
+        toast(`Sanitized ${dirtyLinks} link${dirtyLinks===1?'':'s'}`); // YV-8: trailing ✓ dropped, toasts are plain text
       } catch (e) {
         toast(`Couldn't clean up all the links: ${e.message || 'unknown error'}`);
         console.error(e);
@@ -2706,7 +2765,7 @@ function renderPollView(id, opts){
       document.getElementById('ai-suggest-btn')?.addEventListener('click', async () => {
         const btn = document.getElementById('ai-suggest-btn');
         const resultsEl = document.getElementById('ai-suggest-results');
-        btn.disabled = true; btn.textContent = '✨ Thinking…';
+        btn.disabled = true; btn.innerHTML = `<span class="ic-lbl" style="gap:4px;">${svgIcon(ICONS.sparkle, 13)}Thinking…</span>`; // YV-8: innerHTML so the line icon renders
         try {
           const r = await fetch('/api/suggest-options', {
             method: 'POST',
@@ -2748,7 +2807,7 @@ function renderPollView(id, opts){
           // (not above the chips) so it doesn't push the chips down or add
           // an extra line of vertical space.
           if (!document.getElementById('ai-suggest-close')) {
-            btn.insertAdjacentHTML('afterend', `<button type="button" id="ai-suggest-close" class="ai-suggest-close">✕ Hide</button>`);
+            btn.insertAdjacentHTML('afterend', `<button type="button" id="ai-suggest-close" class="ai-suggest-close"><span class="ic-lbl" style="gap:4px;">${svgIcon(ICONS.close, 12)}Hide</span></button>`);
             document.getElementById('ai-suggest-close')?.addEventListener('click', (ev) => {
               ev.target.remove();
               resultsEl.innerHTML = '';
@@ -2768,7 +2827,7 @@ function renderPollView(id, opts){
           toast('Could not get suggestions — check your connection');
           console.error(e);
         } finally {
-          btn.disabled = false; btn.textContent = '✨Suggest';
+          btn.disabled = false; btn.innerHTML = AI_SUGGEST_LABEL_HTML;
         }
       });
       document.getElementById('resolve-btn')?.addEventListener('click', () => pasteAndResolve());
@@ -2791,7 +2850,7 @@ function renderPollView(id, opts){
         removeBtn.type = 'button';
         removeBtn.className = 'link-clear-btn';
         removeBtn.setAttribute('aria-label', 'Remove this link');
-        removeBtn.textContent = '✕';
+        removeBtn.innerHTML = svgIcon(ICONS.close, 14); // YV-8
         removeBtn.addEventListener('click', () => row.remove());
         row.appendChild(input);
         row.appendChild(removeBtn);
@@ -3036,7 +3095,7 @@ function renderPollView(id, opts){
           <button class="btn btn-ghost" id="section-modal-cancel" style="flex:1">Cancel</button>
           <button class="btn btn-primary" id="section-modal-save" style="flex:1">${isRename ? 'Save' : 'Add section'}</button>
         </div>
-        ${canDelete ? `<button class="btn btn-ghost btn-sm" id="section-modal-delete" style="width:100%;margin-top:10px;color:var(--rose);">🗑️ Delete this empty section</button>` : ''}
+        ${canDelete ? `<button class="btn btn-ghost btn-sm" id="section-modal-delete" style="width:100%;margin-top:10px;color:var(--rose);"><span class="ic-lbl">${svgIcon(ICONS.trash, 15)}Delete this empty section</span></button>` : ''}
       </div>
     `;
     openModal(backdrop, opts);
@@ -3108,7 +3167,7 @@ function renderPollView(id, opts){
         toast('Section deleted');
       } catch (e) {
         toast(`Could not delete section: ${e.message || 'unknown error'}`);
-        btn.disabled = false; btn.textContent = '🗑️ Delete this empty section';
+        btn.disabled = false; btn.innerHTML = `<span class="ic-lbl">${svgIcon(ICONS.trash, 15)}Delete this empty section</span>`; // YV-8: restore the icon label
         console.error(e);
       }
     });
@@ -3222,7 +3281,7 @@ function renderPollView(id, opts){
         <label class="field-label">Name</label>
         <div class="field-wrap">
           <input id="edit-name" class="field field-clearable" placeholder="Option name" value="${escapeHtml(opt.name)}" />
-          <button type="button" class="field-x" data-clear="edit-name" aria-label="Clear name">✕</button>
+          <button type="button" class="field-x" data-clear="edit-name" aria-label="Clear name">${svgIcon(ICONS.close, 12)}</button>
         </div>
         <label class="field-label">Reference link(s)</label>
         <p class="field-label-sub">Optional</p>
@@ -3230,7 +3289,7 @@ function renderPollView(id, opts){
           ${(links.length ? links : ['']).map(l => `
             <div class="extra-link-row">
               <input class="field edit-link-input" placeholder="Paste a link" value="${escapeHtml(l)}" />
-              <button type="button" class="link-clear-btn" aria-label="Remove this link">✕</button>
+              <button type="button" class="link-clear-btn ic-solo" aria-label="Remove this link">${svgIcon(ICONS.close, 14)}</button>
             </div>
           `).join('')}
         </div>
@@ -3241,7 +3300,7 @@ function renderPollView(id, opts){
         <div id="edit-notes-wrap" class="notes-wrap ${opt.notes ? 'expanded' : ''}">
           <div class="field-wrap">
             <textarea id="edit-notes" class="field field-clearable" placeholder="e.g. good for groups, must book ahead">${escapeHtml(opt.notes||'')}</textarea>
-            <button type="button" class="field-x field-x-textarea" data-clear="edit-notes" aria-label="Clear notes">✕</button>
+            <button type="button" class="field-x field-x-textarea" data-clear="edit-notes" aria-label="Clear notes">${svgIcon(ICONS.close, 12)}</button>
           </div>
         </div>
         <div style="display:flex;gap:10px;">
@@ -3285,7 +3344,7 @@ function renderPollView(id, opts){
       removeBtn.type = 'button';
       removeBtn.className = 'link-clear-btn';
       removeBtn.setAttribute('aria-label', 'Remove this link');
-      removeBtn.textContent = '✕';
+      removeBtn.innerHTML = svgIcon(ICONS.close, 14); // YV-8
       removeBtn.addEventListener('click', () => row.remove());
       row.appendChild(input); row.appendChild(removeBtn);
       wrap.appendChild(row);
@@ -3382,14 +3441,19 @@ function voteCount(opt){ return Object.keys(opt.votes || {}).length; }
    downloads individually instead so nothing is silently skipped. */
 async function shareOrCopyResults(pollData, options){
   const sectioned = hasSections(pollData);
+  // YV-7: a hidden tab is hidden on purpose, so it is never shared, even while "show
+  // hidden tabs" is switched on (that toggle only changes what is on screen). Filtered
+  // before the "Preparing" toast so an all-hidden poll bails out without flashing it.
+  // Plain polls have no tabs and are untouched.
+  const shareSections = sectioned ? sectionListOf(pollData).filter(s => !s.hidden) : [];
+  if (sectioned && !shareSections.length) { toast('No visible tabs to share'); return; }
   const caption = `Voted with YouVote: ${location.href}`;
   toast(sectioned ? 'Preparing images…' : 'Preparing image…');
   try {
     let files;
     if (sectioned) {
-      const sections = sectionListOf(pollData);
       files = [];
-      for (const s of sections) {
+      for (const s of shareSections) {
         const sectionOptions = options.filter(o => o.sectionId === s.id);
         const blob = await renderResultsBlob({ ...pollData, title: `${pollData.title} — ${s.name}` }, sectionOptions);
         const filename = `${slugify(pollData.title) || 'poll'}-${slugify(s.name) || 'section'}-results.png`;
@@ -3492,8 +3556,15 @@ async function renderResultsBlob(pollData, options){
   ctx.imageSmoothingQuality = 'high';
   ctx.scale(scale, scale);
 
-  const bg = '#141319', surface = '#1E1C27', border = '#4E4768', text = '#F5F3FA',
-        textMuted = '#A39DB8', violet = '#A594F5', gold = '#EFB65C';
+  // YV-6: the palette is read from the app's CSS variables at draw time, so the image
+  // matches whichever theme is on screen (and any future theme tweak) with no second
+  // copy of the colours to keep in sync. These seven used to be hard-coded dark hexes,
+  // which is why a light-theme share image still came out dark. Each maps to the
+  // variable that holds that exact colour in dark mode: no new colours.
+  const cssVar = getComputedStyle(document.documentElement);
+  const pal = (name) => cssVar.getPropertyValue(name).trim();
+  const bg = pal('--bg'), surface = pal('--surface'), border = pal('--border'), text = pal('--text'),
+        textMuted = pal('--text-muted'), violet = pal('--violet'), gold = pal('--gold');
 
   // background
   ctx.fillStyle = bg;
@@ -3628,8 +3699,8 @@ function optionCardHtml(opt, voter, totalVotes, isLeading, expanded, selectMode,
         <div class="opt-progress-bg" style="width:${pct}%;background:${barColor};opacity:${barOpacity};"></div>
         <div class="opt-row-content">
           ${selectMode
-            ? `<div class="select-check ${isSelected ? 'checked' : ''}" data-select-option="${opt.id}" aria-hidden="true">${isSelected ? '✓' : ''}</div>`
-            : `<div class="vote-btn ${hasVoted ? 'checked' : ''}" aria-hidden="true">${hasVoted ? '✓ Voted' : 'Vote'}</div>`
+            ? `<div class="select-check ${isSelected ? 'checked' : ''}" data-select-option="${opt.id}" aria-hidden="true">${isSelected ? svgIcon(ICONS.check, 16) : ''}</div>`
+            : `<div class="vote-btn ${hasVoted ? 'checked' : ''}" aria-hidden="true">${hasVoted ? svgIcon(ICONS.check, 12) + ' Voted' : 'Vote'}</div>`
           }
           ${optionThumbHtml(opt)}
           <div class="opt-row-text"><div class="opt-title">${renderFormattedText(opt.name)}</div></div>
@@ -3650,8 +3721,8 @@ function optionCardHtml(opt, voter, totalVotes, isLeading, expanded, selectMode,
             const cleanL = extractFirstUrl(l);
             return `
             <span class="link-row-item">
-              <a class="link-chip" href="${escapeHtml(cleanL)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(cleanL)}">🔗 ${escapeHtml(linkPreviewLabel(cleanL))} ↗</a>
-              <button type="button" class="link-copy-btn" data-copy-link="${escapeHtml(cleanL)}" title="Copy link" aria-label="Copy link">📋</button>
+              <a class="link-chip" href="${escapeHtml(cleanL)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(cleanL)}">${svgIcon(ICONS.link, 13)}<span class="link-chip-lbl">${escapeHtml(linkPreviewLabel(cleanL))} ↗</span></a>
+              <button type="button" class="link-copy-btn" data-copy-link="${escapeHtml(cleanL)}" title="Copy link" aria-label="Copy link"><span class="ic-solo">${svgIcon(ICONS.clipboard, 14)}</span></button>
             </span>
           `; }).join('')}</div>` : ''}
           <div class="option-bottom">
@@ -3662,7 +3733,7 @@ function optionCardHtml(opt, voter, totalVotes, isLeading, expanded, selectMode,
               }).join('')}
               <span class="vote-count-label">${count ? count + ' vote' + (count===1?'':'s') + (totalVotes ? ' · ' + pct + '%' : '') : 'No votes yet'}</span>
             </div>
-            <button class="chip chip-icon-only" data-edit="${opt.id}" title="Edit this option">✏️</button>
+            <button class="chip chip-icon-only" data-edit="${opt.id}" title="Edit this option"><span class="ic-solo">${svgIcon(ICONS.pencil, 15)}</span></button>
           </div>
         </div>
       ` : ''}
@@ -3693,6 +3764,13 @@ const TRACKING_PARAMS_CLIENT = new Set([
   'share_id', 'is_copy_url', 'is_from_webapp', 'sender_device', 'share_app_id',
   '_ga', '_gl', 'trk', 'trkcampaign'
 ]);
+/* YV-10: Google's own search params (not the search itself). They only tell Google
+   how the link was produced, so they should not be passed on to friends, and the link
+   opens the same search without them. Applied on google.com/search only, keeping q and
+   anything else. Must stay in sync with GOOGLE_SEARCH_PARAMS in api/resolve-link.js. */
+const GOOGLE_SEARCH_PARAMS_CLIENT = new Set([
+  'sca_esv', 'ei', 'ved', 'uact', 'oq', 'gs_lp', 'sclient', 'sxsrf', 'biw', 'bih'
+]);
 function sanitizeShareUrlClient(u){
   if (!u) return u;
   if (/google\.[a-z.]+\/maps/i.test(u)) {
@@ -3705,8 +3783,13 @@ function sanitizeShareUrlClient(u){
   try {
     const parsed = new URL(u);
     let changed = false;
+    // YV-10: extra rule, google.com/search only (the host check is exact, so other Google
+    // hosts and every other site keep today's behaviour). The tracking-param loop below is
+    // unchanged apart from also checking this rule's list when the link is a Google search.
+    const isGoogleSearch = /^(www\.)?google\.com$/i.test(parsed.hostname) && /^\/search\/?$/i.test(parsed.pathname);
     Array.from(parsed.searchParams.keys()).forEach(key => {
-      if (TRACKING_PARAMS_CLIENT.has(key.toLowerCase())) { parsed.searchParams.delete(key); changed = true; }
+      const k = key.toLowerCase();
+      if (TRACKING_PARAMS_CLIENT.has(k) || (isGoogleSearch && GOOGLE_SEARCH_PARAMS_CLIENT.has(k))) { parsed.searchParams.delete(key); changed = true; }
     });
     return changed ? parsed.toString() : u;
   } catch {
@@ -3721,6 +3804,45 @@ function sanitizeShareUrlClient(u){
    ones. */
 function cleanShareUrlClient(u){
   return sanitizeShareUrlClient(extractFirstUrl(u));
+}
+/* YV-10: one detector shared by auto-clean, the Sweep badge and the Sweep action, all
+   built on cleanShareUrlClient, so a link counted as messy is exactly a link the cleaner
+   would change (the old detector and the old action already agreed; this keeps the new
+   caller, auto-clean, on the same definition instead of a third copy). */
+function dirtyLinkCount(opt){
+  return optionLinks(opt).filter(l => l !== cleanShareUrlClient(l)).length;
+}
+function optionsNeedingClean(options){
+  return options.filter(o => dirtyLinkCount(o) > 0);
+}
+function totalDirtyLinks(options){
+  return options.reduce((n, o) => n + dirtyLinkCount(o), 0);
+}
+/* YV-10: auto-clean, run once per poll per page session. The Set is module-level (not
+   inside renderPollView) and a poll id is added BEFORE any write is attempted, so:
+   later snapshots (including the ones our own writes cause) can never re-run it, a
+   failed write is never retried in a loop, and reopening the poll in the same session
+   does not repeat it. It writes only options whose link actually changed, and only the
+   link and links fields (the Firestore rules allow exactly those). It runs for any
+   visitor, with no login; the writes are idempotent, so two friends opening the poll
+   at once is harmless. Safe scope only: the existing cleaner, no server calls and no
+   short-link expansion. */
+const autoCleanedPolls = new Set();
+async function autoCleanPollLinks(pollId, options){
+  if (autoCleanedPolls.has(pollId)) return;
+  autoCleanedPolls.add(pollId);
+  const dirty = optionsNeedingClean(options);
+  if (!dirty.length) return;
+  const results = await Promise.allSettled(dirty.map(o => {
+    const cleaned = optionLinks(o).map(cleanShareUrlClient);
+    return updateDoc(doc(db, 'polls', pollId, 'options', o.id), { links: cleaned, link: cleaned[0] || null });
+  }));
+  // Count only options whose write succeeded, so the toast never over-claims. A failure is
+  // logged and left silent: this ran without the person asking, and Sweep is the manual backup.
+  const doneOptions = dirty.filter((_, i) => results[i].status === 'fulfilled');
+  results.forEach(r => { if (r.status === 'rejected') console.error('Auto-clean write failed:', r.reason); });
+  const n = totalDirtyLinks(doneOptions);
+  if (n) toast(`Cleaned ${n} link${n===1?'':'s'}`);
 }
 function linkPreviewLabel(url){
   let hostname, pathname;
@@ -3805,11 +3927,11 @@ function textOptionFormHtml(draftName, draftLink, notesExpanded){
       <label class="field-label">Name</label>
       <div class="field-wrap">
         <input id="opt-name" class="field field-clearable" placeholder="Option name" list="option-name-suggestions" value="${escapeHtml(draftName || '')}" />
-        <button type="button" class="field-x" data-clear="opt-name" aria-label="Clear name">✕</button>
+        <button type="button" class="field-x" data-clear="opt-name" aria-label="Clear name">${svgIcon(ICONS.close, 12)}</button>
       </div>
       ${optionNameDatalistHtml()}
       <div class="ai-suggest-row">
-        <button type="button" id="ai-suggest-btn" class="ai-suggest-btn">✨Suggest</button>
+        <button type="button" id="ai-suggest-btn" class="ai-suggest-btn">${AI_SUGGEST_LABEL_HTML}</button>
       </div>
       <div id="ai-suggest-results"></div>
     </div>
@@ -3817,7 +3939,7 @@ function textOptionFormHtml(draftName, draftLink, notesExpanded){
       <label class="field-label">Paste Link</label>
       <div class="autofill-row">
         <input id="opt-link" class="field" placeholder="e.g. Maps, XHS, IG link" value="${escapeHtml(draftLink || '')}" />
-        <button id="clear-link-btn" class="link-clear-btn" type="button" aria-label="Clear link">✕</button>
+        <button id="clear-link-btn" class="link-clear-btn ic-solo" type="button" aria-label="Clear link">${svgIcon(ICONS.close, 14)}</button>
         <button id="resolve-btn" class="btn btn-secondary btn-search btn-sm${linkResolving ? ' is-searching' : ''}" aria-busy="${linkResolving ? 'true' : 'false'}">${SEARCH_ICON} ${linkResolving ? 'Searching…' : 'Search'}</button>
       </div>
       <p class="autofill-status" id="resolve-status"></p>
@@ -3831,7 +3953,7 @@ function textOptionFormHtml(draftName, draftLink, notesExpanded){
       <div id="notes-wrap" class="notes-wrap ${notesExpanded ? 'expanded' : ''}">
         <div class="field-wrap">
           <textarea id="opt-notes" class="field field-clearable" placeholder="e.g. good for groups, must book ahead"></textarea>
-          <button type="button" class="field-x field-x-textarea" data-clear="opt-notes" aria-label="Clear notes">✕</button>
+          <button type="button" class="field-x field-x-textarea" data-clear="opt-notes" aria-label="Clear notes">${svgIcon(ICONS.close, 12)}</button>
         </div>
       </div>
     </div>
