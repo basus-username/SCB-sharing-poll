@@ -70,6 +70,7 @@
     --green:#7FCB98;
     --radius:16px;
     --radius-sm:10px;
+    --detail-bg:color-mix(in srgb, var(--bg) 45%, var(--surface)); /* YV-21 */
   }
   :root[data-theme="light"]{
     color-scheme:light;
@@ -79,8 +80,9 @@
     --gold:#B07C1E; --gold-dim:#F8E8CC;
     --rose:#C74C53; --rose-dim:#F5D6D8; --green:#2C8A4E;
     --on-rose:#fff; --on-green:#fff; --on-gold:#fff;
+    --detail-bg:color-mix(in srgb, var(--surface-2) 45%, var(--surface)); /* YV-21 */
   }
-  *{box-sizing:border-box;}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;}
   body{
     background:var(--bg);
@@ -95,6 +97,11 @@
   a{color:inherit;}
   button{font-family:inherit;cursor:pointer;}
   input,textarea{font-family:inherit;}
+  /* YV-23: no long-press text menu and no tap flash. Text selection is off everywhere
+     except inputs (copy buttons and links still work). */
+  body{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
+  input,textarea{user-select:text;-webkit-user-select:text;-webkit-touch-callout:default;}
+  button:focus:not(:focus-visible){outline:none;}
   ::selection{background:var(--violet-dim);}
 
   #app{max-width:560px;margin:0 auto;padding:8px 16px 40px;}
@@ -357,17 +364,19 @@
   .sheet-voter span.nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .sheet-group-label{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--text-muted);margin:14px 2px 6px;}
   .sheet-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
-  /* YV-9: the More group is one row of four (Delete, Sweep, Claim votes, Home).
+  /* YV-9/YV-24/YV-25: the More group is 3 tiles (Delete, Claim votes, Home), or 4 with Sweep first;
+     the Poll group is 4 only while a hidden tab exists.
      Only this modifier changes, so the Share and Poll groups keep three columns.
      Tile height stays at the shared min-height:64px; the gap, side padding,
      label and icon shrink so four fit on a 390px phone. */
   .sheet-grid-4{grid-template-columns:repeat(4,1fr);gap:6px;}
-  .sheet-grid-4 .sheet-tile{padding:8px 2px;font-size:11px;gap:4px;}
-  /* YV-9: Sweep shows how many links the cleaner would change as a small count
-     badge on the tile, and is greyed out and inert at 0. The badge reuses
+  .sheet-grid-4 .sheet-tile{padding:8px 2px;font-size:11px;gap:4px;min-width:0;}
+  .sheet-grid-4 .sheet-lbl{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:100%;text-align:center;}
+  /* YV-25: Sweep is only rendered when it has links to clean (first tile, left). The
+     2-line clamp keeps a long "Rename “Name”" label inside a 4-column tile (YV-24).
+     The count badge reuses
      --violet with white text (the same pair .btn-primary uses), so no new colour. */
   .sheet-tile{position:relative;}
-  .sheet-tile:disabled{opacity:.45;pointer-events:none;}
   .sheet-count{
     position:absolute;top:4px;right:5px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;
     background:var(--violet);color:#fff;font-size:10px;font-weight:700;line-height:16px;text-align:center;
@@ -440,7 +449,7 @@
   .bulk-select-all-btn:active{color:var(--text);}
   .bulk-count{font-size:12px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .bulk-bar-actions{display:flex;gap:6px;flex-shrink:0;}
-  .option-detail{padding:0 14px 14px;border-top:1px solid var(--border);}
+  .option-detail{padding:0 14px 14px;border-top:1px solid var(--border);background:var(--detail-bg);}
   .option-notes{font-size:13px;color:var(--text-muted);line-height:1.4;padding-top:10px;}
   .option-sub{margin-top:8px;}
   .link-chip{
@@ -900,21 +909,32 @@ function toast(msg){
    avoids pairing an explicit history.back() with an immediate pushState,
    which would race the delayed popstate against whatever opens next. */
 const overlayStack = [];
+// YV-22: set by the poll page. When true, every overlay entry (and the entry it is pushed
+// from) opts out of scroll restoration, so history.back() cannot yank the page back to an
+// older scroll position after draw() has anchored the tapped card.
+let manualScrollRestore = false;
 function pushOverlay(closeFn){
   overlayStack.push(closeFn);
+  if (manualScrollRestore) { try { history.scrollRestoration = 'manual'; } catch (e) {} }
   history.pushState({ overlay: true }, '');
 }
+// YV-22: a history.back() made by closeOverlay() must not run the popstate handler's
+// "close the next overlay" step, or one tap closes two expanded cards. Each programmatic
+// back is counted here and swallowed once by the handler (entries are anonymous, so the
+// entry count and the stack length stay equal).
+let programmaticBacks = 0;
 function closeOverlay(closeFn){
   closeFn();
   const idx = overlayStack.lastIndexOf(closeFn);
   if (idx !== -1) overlayStack.splice(idx, 1);
-  if (history.state && history.state.overlay) history.back();
+  if (history.state && history.state.overlay) { programmaticBacks++; history.back(); }
 }
 function swapOverlay(newCloseFn){
   if (overlayStack.length) overlayStack[overlayStack.length - 1] = newCloseFn;
   else pushOverlay(newCloseFn);
 }
 window.addEventListener('popstate', () => {
+  if (programmaticBacks > 0) { programmaticBacks--; return; }
   if (!overlayStack.length) return;
   const closeFn = overlayStack.pop();
   closeFn();
@@ -1908,6 +1928,11 @@ function renderPollView(id, opts){
   let pendingBatchAdd = !!pendingBatchLinks;
   const expandedIds = new Set();
   const expandCloseFns = new Map();
+  let scrollAnchorId = null; // YV-22: card to hold still across the next draw()
+  // YV-22: closeOverlay()'s history.back() makes the browser restore the earlier entry's
+  // scroll position a moment after draw(), undoing the anchoring. The poll page never
+  // needs that restore (its content arrives async), so switch it off for this page only.
+  manualScrollRestore = true;
   let selectMode = false;
   const selectedIds = new Set();
   const calState = { month: new Date(new Date().getFullYear(), new Date().getMonth(), 1), selected: new Set() };
@@ -2104,6 +2129,21 @@ function renderPollView(id, opts){
     const sweepCount = totalDirtyLinks(options);
     const allSelected = selectMode && sectionOptions.length > 0 && sectionOptions.every(o => selectedIds.has(o.id));
 
+    // YV-22: keep the tapped card (or else the first card on screen) where it was, so a
+    // collapse, or a friend's vote arriving while scrolled, never jumps the view.
+    const anchorId = scrollAnchorId || (() => {
+      for (const c of $app.querySelectorAll('.option-card[data-option-id]')) {
+        if (c.getBoundingClientRect().bottom > 0) return c.getAttribute('data-option-id');
+      }
+      return null;
+    })();
+    scrollAnchorId = null;
+    const anchorTopBefore = anchorId ? (() => {
+      const c = $app.querySelector(`.option-card[data-option-id="${CSS.escape(anchorId)}"]`);
+      return c ? c.getBoundingClientRect().top : null;
+    })() : null;
+
+    document.body.style.minHeight = ''; // drop any spacer added by the last anchoring (measured above first)
     $app.innerHTML = `
       <div class="poll-title-row">
         <h1 class="poll-title">${renderFormattedText(pollData.title)}</h1>
@@ -2140,7 +2180,7 @@ function renderPollView(id, opts){
             <button class="sheet-tile" id="remind-btn"><span class="sheet-ic">${svgIcon(ICONS.bell)}</span><span class="sheet-lbl">Remind everyone</span></button>
           </div>
           <div class="sheet-group-label">Poll</div>
-          <div class="sheet-grid">
+          <div class="sheet-grid${sectioned && sections.some(s => s.hidden) ? ' sheet-grid-4' : ''}">
             <button class="sheet-tile" id="edit-title-btn"><span class="sheet-ic">${svgIcon(ICONS.pencil)}</span><span class="sheet-lbl">Edit title</span></button>
             ${sectioned
               ? `<button class="sheet-tile" id="rename-section-btn"><span class="sheet-ic">${svgIcon(ICONS.tag)}</span><span class="sheet-lbl">Rename “${escapeHtml(activeSection ? activeSection.name : '')}”</span></button>`
@@ -2148,17 +2188,16 @@ function renderPollView(id, opts){
             }
             <button class="sheet-tile" id="toggle-multi-btn"><span class="sheet-ic">${svgIcon(ICONS.choice)}</span><span class="sheet-lbl">${activeMultiChoice ? 'Make single choice' : 'Make multiple choice'}</span></button>
             ${sectioned && sections.some(s => s.hidden)
-              ? `<button class="sheet-tile" id="toggle-hidden-tabs-btn"><span class="sheet-ic">${svgIcon(showHiddenSections ? ICONS.eyeoff : ICONS.eye)}</span><span class="sheet-lbl">${showHiddenSections ? 'Hide hidden tabs' : `Show hidden tabs (${sections.filter(s => s.hidden).length})`}</span></button>`
+              ? `<button class="sheet-tile" id="toggle-hidden-tabs-btn"><span class="sheet-ic">${svgIcon(showHiddenSections ? ICONS.eyeoff : ICONS.eye)}</span><span class="sheet-lbl">${showHiddenSections ? 'Hide hidden' : `Show hidden (${sections.filter(s => s.hidden).length})`}</span></button>`
               : ''
             }
           </div>
           <div class="sheet-group-label">More</div>
-          <!-- YV-9: one row of four, fixed order and labels. Sweep is always rendered
-               (it used to appear only when a link looked messy), with a count badge,
-               and is disabled at 0. Ids are unchanged so every handler still binds. -->
-          <div class="sheet-grid sheet-grid-4">
+          <!-- YV-25: Sweep appears only when it has links to clean, as the FIRST tile on the left,
+               so Home is always right-most (bottom-right, thumb side). Ids are unchanged. -->
+          <div class="sheet-grid${sweepCount ? ' sheet-grid-4' : ''}">
+            ${sweepCount ? `<button class="sheet-tile" id="clean-links-btn" aria-label="Sweep, ${sweepCount} link${sweepCount===1?'':'s'} to clean"><span class="sheet-ic">${svgIcon(ICONS.broom, 18)}</span><span class="sheet-lbl">Sweep</span><span class="sheet-count">${sweepCount}</span></button>` : ''}
             <button class="sheet-tile" id="bulk-select-btn"><span class="sheet-ic">${svgIcon(ICONS.trash, 18)}</span><span class="sheet-lbl">Delete</span></button>
-            <button class="sheet-tile" id="clean-links-btn" ${sweepCount ? `aria-label="Sweep, ${sweepCount} link${sweepCount===1?'':'s'} to clean"` : 'disabled aria-label="Sweep, nothing to clean"'}><span class="sheet-ic">${svgIcon(ICONS.broom, 18)}</span><span class="sheet-lbl">Sweep</span>${sweepCount ? `<span class="sheet-count">${sweepCount}</span>` : ''}</button>
             <button class="sheet-tile" id="merge-identity-btn"><span class="sheet-ic">${svgIcon(ICONS.claim, 18)}</span><span class="sheet-lbl">Claim votes</span></button>
             <button class="sheet-tile" id="go-home-btn"><span class="sheet-ic">${svgIcon(ICONS.home, 18)}</span><span class="sheet-lbl">Home</span></button>
           </div>
@@ -2210,6 +2249,21 @@ function renderPollView(id, opts){
       <div class="footer-credit">YouVote 2.0 — By YE Chew</div>
     `;
 
+    if (anchorTopBefore !== null) {
+      const c = $app.querySelector(`.option-card[data-option-id="${CSS.escape(anchorId)}"]`);
+      if (c) {
+        const delta = c.getBoundingClientRect().top - anchorTopBefore;
+        if (Math.abs(delta) > 1) {
+          // Collapsing near the very bottom can leave the page too short to scroll far
+          // enough (body has min-height:100vh); lift the body's minimum height by just the
+          // missing amount so the card can stay where the finger is. Reset on the next draw().
+          const target = window.scrollY + delta;
+          const need = target + window.innerHeight - document.documentElement.scrollHeight;
+          if (need > 1) document.body.style.minHeight = Math.ceil(target + window.innerHeight) + 'px';
+          window.scrollTo(0, target);
+        }
+      }
+    }
     bindPollEvents(id, pollData, options, voter);
     updateHistoryButtons();
   }
@@ -2661,6 +2715,7 @@ function renderPollView(id, opts){
         const wrap = btn.closest('.swipe-wrap-option');
         if (wrap && wrap.dataset.justDragged === '1') { wrap.dataset.justDragged = ''; return; }
         const optId = btn.getAttribute('data-toggle-expand');
+        scrollAnchorId = optId; // YV-22: the tapped card stays where the finger is
         if (expandedIds.has(optId)) {
           const closeFn = expandCloseFns.get(optId);
           if (closeFn) closeOverlay(closeFn); else { expandedIds.delete(optId); draw(); }
@@ -3439,6 +3494,10 @@ function voteCount(opt){ return Object.keys(opt.votes || {}).length; }
    sharing multiple files together is what WhatsApp/Instagram actually
    support on Android. If file-sharing isn't available, each image
    downloads individually instead so nothing is silently skipped. */
+// YV-20: the share image lists options highest votes first, on every tab (Dates included).
+// Sorts a COPY (stable, so ties keep on-screen order and zero votes stay last); the
+// on-screen list stays in creation order so rows never jump while people vote.
+function byVotesDesc(opts){ return [...opts].sort((a, b) => voteCount(b) - voteCount(a)); }
 async function shareOrCopyResults(pollData, options){
   const sectioned = hasSections(pollData);
   // YV-7: a hidden tab is hidden on purpose, so it is never shared, even while "show
@@ -3455,12 +3514,12 @@ async function shareOrCopyResults(pollData, options){
       files = [];
       for (const s of shareSections) {
         const sectionOptions = options.filter(o => o.sectionId === s.id);
-        const blob = await renderResultsBlob({ ...pollData, title: `${pollData.title} — ${s.name}` }, sectionOptions);
+        const blob = await renderResultsBlob({ ...pollData, title: `${pollData.title} — ${s.name}` }, byVotesDesc(sectionOptions));
         const filename = `${slugify(pollData.title) || 'poll'}-${slugify(s.name) || 'section'}-results.png`;
         files.push(new File([blob], filename, { type: 'image/png' }));
       }
     } else {
-      const blob = await renderResultsBlob(pollData, options);
+      const blob = await renderResultsBlob(pollData, byVotesDesc(options));
       files = [new File([blob], `${slugify(pollData.title) || 'poll'}-results.png`, { type: 'image/png' })];
     }
 
