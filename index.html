@@ -2390,6 +2390,11 @@ function renderPollView(id, opts){
       addExpanded = true;
       pushOverlay(closeAddPanel);
       draw();
+      // YV-26: draw() anchors the first card on screen (YV-22), and the panel is inserted
+      // ABOVE the cards, so the anchoring scrolled the page down by the panel height and
+      // pushed the panel off the top. Show the panel from the top of the page instead.
+      document.body.style.minHeight = '';
+      window.scrollTo(0, 0);
     });
     document.getElementById('add-collapse-btn')?.addEventListener('click', () => {
       closeOverlay(closeAddPanel);
