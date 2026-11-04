@@ -429,6 +429,12 @@
   }
   .opt-chevron:active{background:var(--violet-dim);opacity:1;}
   .opt-chevron.open{transform:rotate(180deg);opacity:.9;}
+  /* YV-27: invisible expand/collapse zone over the count + arrow (right 100px of the row,
+     full row height). A SEPARATE element, not a ::before on .opt-chevron, because the
+     chevron rotates 180deg when open and would carry the zone with it. Pressed feedback
+     reuses the arrow's own :active tint (arrow only, subtle). */
+  .opt-expand-zone{position:absolute;right:0;top:0;bottom:0;width:100px;z-index:2;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+  .option-row:has(.opt-expand-zone:active) .opt-chevron{background:var(--violet-dim);opacity:1;}
   .vote-btn{
     min-width:38px;height:24px;border-radius:7px;border:1.5px solid var(--border);
     background:var(--bg);color:var(--text-muted);
@@ -2311,7 +2317,7 @@ function renderPollView(id, opts){
             <button class="btn btn-xs" id="bulk-delete-btn" style="background:var(--rose);color:var(--on-rose);" ${selectedIds.size ? '' : 'disabled'}>${svgIcon(ICONS.trash, 14)} Delete${selectedIds.size ? ` ${selectedIds.size}` : ''}</button>
           </div>
         </div>
-      ` : (sectionOptions.length ? `<div class="swipe-hint">Swipe an option left to delete</div>` : '')}
+      ` : (sectionOptions.length ? `<div class="swipe-hint">Tap ▾ for details</div>` : '')}
 
       ${sectionOptions.map(opt => selectMode ? `
         ${optionCardHtml(opt, voter, totalVotes, voteCount(opt)===topCount && topCount>0, expandedIds.has(opt.id), true, selectedIds.has(opt.id))}
@@ -2731,8 +2737,10 @@ function renderPollView(id, opts){
       }
     });
 
-    // Tapping anywhere on an option row votes for it. Only the chevron
-    // button (below, with its own stopPropagation) expands/collapses.
+    // Tapping anywhere on an option row votes for it, EXCEPT the right-hand
+    // expand zone (YV-27: .opt-expand-zone + the chevron button, both
+    // [data-toggle-expand] with their own stopPropagation) which only
+    // expands/collapses.
     document.querySelectorAll('[data-vote-row]').forEach(row => {
       const fireVote = () => {
         const wrap = row.closest('.swipe-wrap-option');
@@ -3851,6 +3859,7 @@ function optionCardHtml(opt, voter, totalVotes, isLeading, expanded, selectMode,
           <div class="opt-count num">${count}</div>
           <button class="opt-chevron ${expanded ? 'open' : ''}" data-toggle-expand="${opt.id}" aria-label="${expanded ? 'Hide' : 'Show'} details for ${escapeHtml(opt.name)}" aria-expanded="${expanded}">▾</button>
         </div>
+        <span class="opt-expand-zone" data-toggle-expand="${opt.id}" aria-hidden="true" tabindex="-1"></span>
       </div>
       ${expanded ? `
         <div class="option-detail">
