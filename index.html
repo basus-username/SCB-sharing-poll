@@ -122,6 +122,13 @@
   }
   .undo-fab.active{opacity:1;transform:translateY(0) scale(1);pointer-events:auto;}
   .undo-fab:active{transform:scale(0.95);}
+  /* YV-19 sync pill: bottom-left, just above the 34px undo button (bottom:18px) */
+  .sync-status-pill{position:fixed;left:14px;bottom:calc(60px + env(safe-area-inset-bottom,0px));z-index:16;display:none;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);padding:4px 10px 4px 8px;border-radius:12px;font-size:10px;font-weight:700;letter-spacing:.02em;white-space:nowrap;pointer-events:none;}
+  .sync-status-pill.show{display:flex;}
+  .sync-status-pill.syncing{color:var(--gold);}
+  .sync-status-pill .sync-dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
+  .sync-status-pill.syncing .sync-dot{animation:syncPillPulse 1s ease-in-out infinite;}
+  @keyframes syncPillPulse{0%,100%{opacity:.35}50%{opacity:1}}
   .undo-fab-icon{
     width:26px;height:26px;border-radius:50%;background:rgba(239,182,92,0.18);
     display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;
@@ -778,12 +785,15 @@
   <div class="skeleton-bar skeleton-option"></div>
 </div>
 <div id="toast" class="toast"></div>
+<div id="sync-pill" class="sync-status-pill" aria-hidden="true"><span class="sync-dot"></span><span id="sync-pill-text"></span></div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getFirestore, doc, setDoc, getDoc, updateDoc, deleteDoc, deleteField,
-  collection, addDoc, onSnapshot, serverTimestamp, query, orderBy, getDocs
+  getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+  waitForPendingWrites, doc, setDoc as _setDoc, getDoc, updateDoc as _updateDoc,
+  deleteDoc as _deleteDoc, deleteField,
+  collection, onSnapshot, serverTimestamp, query, orderBy, getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* =========================================================
@@ -805,7 +815,42 @@ const firebaseConfig = {
 };
 
 const fbApp = initializeApp(firebaseConfig);
-const db = getFirestore(fbApp);
+/* YV-19: persistent local cache (IndexedDB) so the app opens and queues writes
+   offline. If init throws (private mode, old WebView), fall back to the
+   memory-only getFirestore: still works online, just no offline survival. */
+let db;
+try {
+  db = initializeFirestore(fbApp, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
+} catch (e) {
+  console.warn('Persistent cache unavailable, using memory cache:', e);
+  db = getFirestore(fbApp);
+}
+
+/* YV-19: a Firestore write promise only resolves on SERVER ack, so offline every
+   `await` after a write would hang (undo entry, toast, closing a modal).
+   syncedWrite resolves 'queued' when offline or after 2.5 s without ack, so the
+   caller carries on as "saved on this device". Online a rejection still surfaces
+   at once; a queued write the server rejects later raises a warning toast.
+   setDoc/updateDoc/deleteDoc/addDoc below are wrapped, so every write site in
+   the app goes through it. */
+function syncedWrite(promise){
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => { if (!settled) { settled = true; resolve('queued'); } }, navigator.onLine ? 2500 : 0);
+    Promise.resolve(promise).then(
+      () => { if (!settled) { settled = true; clearTimeout(timer); resolve('acked'); } },
+      err => {
+        if (!settled) { settled = true; clearTimeout(timer); reject(err); }
+        else { console.error('queued write rejected by server:', err); toast('A change could not be synced and may not have saved, please check it'); }
+      }
+    );
+  });
+}
+const setDoc = (...a) => syncedWrite(_setDoc(...a));
+const updateDoc = (...a) => syncedWrite(_updateDoc(...a));
+const deleteDoc = (...a) => syncedWrite(_deleteDoc(...a));
+// addDoc = setDoc on a pre-made auto-id ref, so callers still get the ref (and its id) at once
+const addDoc = (colRef, data) => { const ref = doc(colRef); return syncedWrite(_setDoc(ref, data)).then(() => ref); };
 
 /* ---------- helpers ---------- */
 const $app = document.getElementById('app');
@@ -885,6 +930,30 @@ function toast(msg){
   $toast.classList.add('show');
   setTimeout(()=>$toast.classList.remove('show'), 2200);
 }
+/* ---------- YV-19 sync pill ----------
+   OFFLINE while navigator.onLine is false; on reconnect (and on load) SYNCING
+   until waitForPendingWrites resolves; hidden online with nothing pending.
+   SYNCING only appears if the wait takes over 400 ms, so no flicker. */
+const $syncPill = document.getElementById('sync-pill');
+const $syncPillText = document.getElementById('sync-pill-text');
+let syncRun = 0, syncShowTimer = null;
+function setSyncPill(state){
+  $syncPill.classList.toggle('show', !!state);
+  $syncPill.classList.toggle('syncing', state === 'syncing');
+  $syncPillText.textContent = state === 'offline' ? 'OFFLINE · saved on this device' : state === 'syncing' ? 'SYNCING…' : '';
+}
+async function settleSyncPill(){
+  const run = ++syncRun;
+  clearTimeout(syncShowTimer);
+  syncShowTimer = setTimeout(() => { if (run === syncRun && navigator.onLine) setSyncPill('syncing'); }, 400);
+  try { await waitForPendingWrites(db); } catch (e) { console.error(e); }
+  if (run !== syncRun) return;
+  clearTimeout(syncShowTimer);
+  setSyncPill(navigator.onLine ? null : 'offline');
+}
+window.addEventListener('offline', () => { syncRun++; clearTimeout(syncShowTimer); setSyncPill('offline'); });
+window.addEventListener('online', settleSyncPill);
+if (navigator.onLine) settleSyncPill(); else setSyncPill('offline');
 /* ---------- unified back-button-closable overlay stack ----------
    Every transient overlay — a modal, the "..." menu, the add-option
    panel, an expanded option's dropdown, bulk-select mode — pushes ONE
@@ -1556,6 +1625,10 @@ function renderShareNewPollPrompt(links, contextByUrl){
    just falls back to what resolve-link.js already found — it never
    blocks or breaks adding the option. ---------- */
 async function resolveNameForLink(link, context){
+  if (!navigator.onLine) { // YV-19: no network, keep the plain-label fallback
+    toast('Needs connection');
+    return { name: linkPreviewLabel(link), url: link, thumbnail: null };
+  }
   let base;
   try {
     const res = await fetch(`/api/resolve-link?url=${encodeURIComponent(link)}`);
@@ -2053,6 +2126,11 @@ function renderPollView(id, opts){
 
   onSnapshot(pollRef, (snap) => {
     if (!snap.exists()) {
+      if (snap.metadata.fromCache) {
+        // Cache says "missing" while offline: that is not proof of deletion.
+        $app.innerHTML = `<div class="empty-state">This poll isn't saved on this phone yet. Open it once while online.<br><br><a href="?" class="btn btn-ghost">Back home</a></div>`;
+        return;
+      }
       $app.innerHTML = `<div class="empty-state">This poll doesn't exist or was removed.<br><br><a href="?" class="btn btn-ghost">Back home</a></div>`;
       return;
     }
@@ -2818,6 +2896,7 @@ function renderPollView(id, opts){
         });
       });
       document.getElementById('ai-suggest-btn')?.addEventListener('click', async () => {
+        if (!navigator.onLine) { toast('Needs connection'); return; } // YV-19
         const btn = document.getElementById('ai-suggest-btn');
         const resultsEl = document.getElementById('ai-suggest-results');
         btn.disabled = true; btn.innerHTML = `<span class="ic-lbl" style="gap:4px;">${svgIcon(ICONS.sparkle, 13)}Thinking…</span>`; // YV-8: innerHTML so the line icon renders
@@ -2934,6 +3013,7 @@ function renderPollView(id, opts){
 
   async function resolveLink(){
     if (linkResolving) return; // paste listener + Search button can both land here
+    if (!navigator.onLine) { toast('Needs connection'); return; } // YV-19
     const input = document.getElementById('opt-link');
     const raw = input.value.trim();
     // Clean whatever's actually in the field down to just the URL first —
