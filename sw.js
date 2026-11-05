@@ -8,7 +8,7 @@
 // navigations match the cache with ignoreSearch, so a poll link
 // (/?poll=xyz) that was never opened under that exact URL still opens offline.
 // Firestore and /api/ traffic is never touched by this worker.
-const CACHE_NAME = 'youvote-v39';
+const CACHE_NAME = 'youvote-v40';
 const PRECACHE = ['/', '/index.html', '/manifest.json', '/icons/icon-192.png'];
 const NETWORK_TIMEOUT_MS = 3000;
 
