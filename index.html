@@ -3695,8 +3695,18 @@ async function renderResultsBlob(pollData, options){
   const W = 640;
   const PAD = 28;
   const ROW_H = 64;
-  const HEADER_H = 96;
   const FOOTER_H = 44;
+  // YV-28: the header height follows the title. The title baseline is y 40, every extra
+  // wrapped line adds TITLE_LH, then 28 px of air before the first row (68 for a one-line
+  // title; it used to be a fixed 96 because a "N votes total" line sat under the title).
+  // The real canvas needs its height before anything is drawn, so the title is measured
+  // with a dry run of wrapText on a scratch canvas using the same font as the draw below.
+  const TITLE_LH = 26;
+  const titleText = pollData.title || 'Poll results';
+  const measureCtx = document.createElement('canvas').getContext('2d');
+  measureCtx.font = "600 22px Fraunces, serif";
+  const titleLines = wrapText(measureCtx, titleText, 0, 0, W - PAD * 2, TITLE_LH, true);
+  const HEADER_H = 40 + (titleLines - 1) * TITLE_LH + 28;
   const rows = options.length || 1;
   const H = HEADER_H + rows * ROW_H + FOOTER_H + PAD;
 
@@ -3726,12 +3736,10 @@ async function renderResultsBlob(pollData, options){
   ctx.fillStyle = text;
   ctx.font = "600 22px Fraunces, serif";
   ctx.textBaseline = 'alphabetic';
-  wrapText(ctx, pollData.title || 'Poll results', PAD, 40, W - PAD * 2, 26);
+  wrapText(ctx, titleText, PAD, 40, W - PAD * 2, TITLE_LH);
 
+  // YV-28: no "N votes total" line any more; the total is only needed for the percentages.
   const totalVotes = options.reduce((sum, o) => sum + voteCount(o), 0);
-  ctx.fillStyle = textMuted;
-  ctx.font = "500 13px Inter, sans-serif";
-  ctx.fillText(`${totalVotes} vote${totalVotes===1?'':'s'} total`, PAD, 68);
 
   let y = HEADER_H;
   if (!options.length) {
@@ -3808,19 +3816,23 @@ function roundRect(ctx, x, y, w, h, r){
   ctx.arcTo(x, y, x + w, y, rr);
   ctx.closePath();
 }
-function wrapText(ctx, str, x, y, maxWidth, lineHeight){
+// Returns the number of lines. dryRun measures without drawing (YV-28: the share image
+// needs the title's line count to size its header before the canvas exists).
+function wrapText(ctx, str, x, y, maxWidth, lineHeight, dryRun){
   const words = (str || '').split(' ');
-  let line = '', lineY = y;
+  let line = '', lineY = y, lines = 0;
   for (let i = 0; i < words.length; i++) {
     const test = line ? line + ' ' + words[i] : words[i];
     if (ctx.measureText(test).width > maxWidth && line) {
-      ctx.fillText(line, x, lineY);
+      if (!dryRun) ctx.fillText(line, x, lineY);
+      lines++;
       line = words[i]; lineY += lineHeight;
     } else {
       line = test;
     }
   }
-  if (line) ctx.fillText(line, x, lineY);
+  if (line) { if (!dryRun) ctx.fillText(line, x, lineY); lines++; }
+  return Math.max(lines, 1);
 }
 function truncateToWidth(ctx, str, maxWidth){
   if (ctx.measureText(str).width <= maxWidth) return str;
