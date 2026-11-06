@@ -179,8 +179,6 @@
   }
 
   /* ---------- Home ---------- */
-  .hero-compact{color:var(--text-muted);font-size:12.5px;line-height:1.4;margin:0 0 14px;}
-
   .install-banner-compact{
     display:flex;align-items:center;gap:8px;
     background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);
@@ -244,15 +242,19 @@
      (.btn sets display, which would otherwise beat the hidden attribute). */
   .home-create-open{margin-bottom:12px;}
   .home-create-open[hidden],#home-create-card[hidden]{display:none;}
-  /* YV-33: Home theme toggle, plain glyph in a 40px tap box, no border or fill, low contrast until pressed.
-     The 36.5px right margin puts the glyph centre on the poll page's toggle glyph (37px chip, 6px gap, 34px "..." chip, 16px page
-     padding, 2px topbar padding); the -5px vertical margins keep the top bar as tall as before. */
-  .home-theme-btn{
+  /* YV-33 / YV-35: theme toggle glyph shared by Home and the poll page, plain 16px glyph in a 40px tap box,
+     no border or fill, low contrast until pressed. Only the margins differ per page, so the glyph centre stays put:
+     Home: the 36.5px right margin puts the glyph centre on the poll page's toggle glyph (37px slot, 6px gap, 34px "..." chip,
+     16px page padding, 2px topbar padding); the -5px vertical margins keep the top bar as tall as before.
+     Poll page: the 40px box sits in the old 37px chip slot (-1.5px each side), -4px vertical margins keep the 32px row height. */
+  .theme-glyph-btn{
     width:40px;height:40px;padding:0;border:0;background:none;color:var(--text-muted);opacity:.6;
-    display:flex;align-items:center;justify-content:center;flex-shrink:0;margin:-5px 36.5px -5px 0;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
   }
-  .home-theme-btn svg{width:16px;height:16px;display:block;}
-  .home-theme-btn:active{opacity:1;color:var(--text);}
+  .theme-glyph-btn svg{width:16px;height:16px;display:block;}
+  .theme-glyph-btn:active{opacity:1;color:var(--text);}
+  .home-theme-btn{margin:-5px 36.5px -5px 0;}
+  .title-actions .theme-glyph-btn{margin:-4px -1.5px;}
 
   .recent-list{display:flex;flex-direction:column;gap:8px;}
   .swipe-wrap{position:relative;border-radius:var(--radius-sm);overflow:hidden;}
@@ -779,6 +781,17 @@
     padding:10px 16px;border-radius:20px;font-size:13px;z-index:60;opacity:0;transition:opacity .2s;pointer-events:none;
   }
   .toast.show{opacity:1;}
+  /* YV-37: tappable variant. Same bottom spot; max-width keeps it clear of the 34px undo/redo buttons in both
+     bottom corners, and it stays under 42px tall so it sits below the sync pill (bottom:60px). */
+  .toast.toast-action{
+    pointer-events:auto;display:flex;align-items:center;gap:12px;max-width:calc(100% - 140px);
+    padding:5px 6px 5px 14px;
+  }
+  .toast-action .toast-msg{white-space:nowrap;}
+  .toast-action .toast-btn{
+    background:var(--violet-dim);color:var(--violet);font-weight:700;font-size:12px;
+    padding:6px 12px;border-radius:14px;white-space:nowrap;
+  }
 
   @media (prefers-reduced-motion: reduce){*{transition:none !important;}}
 </style>
@@ -946,11 +959,36 @@ window.addEventListener('appinstalled', () => {
   toast('Installed — find YouVote on your home screen');
 });
 
+/* One toast element for everything, so toasts never stack. Each call cancels the previous hide timer
+   (before, an older timer could hide a newer toast early) and drops any action from the last toast. */
+let toastTimer = null, toastAction = null;
 function toast(msg){
+  clearTimeout(toastTimer);
+  toastAction = null;
+  $toast.classList.remove('toast-action');
   $toast.textContent = msg;
   $toast.classList.add('show');
-  setTimeout(()=>$toast.classList.remove('show'), 2200);
+  toastTimer = setTimeout(()=>$toast.classList.remove('show'), 2200);
 }
+/* YV-37: tappable toast, about 6 s. The whole pill is the tap target (the label is just the visible cue);
+   tapping runs fn once and hides the toast. Reuses the same element as toast(). */
+function toastWithAction(msg, label, fn){
+  clearTimeout(toastTimer);
+  $toast.innerHTML = '<span class="toast-msg"></span><span class="toast-btn"></span>';
+  $toast.firstChild.textContent = msg;
+  $toast.lastChild.textContent = label;
+  toastAction = fn;
+  $toast.classList.add('show', 'toast-action');
+  toastTimer = setTimeout(()=>{ toastAction = null; $toast.classList.remove('show', 'toast-action'); }, 6000);
+}
+$toast.addEventListener('click', () => {
+  const fn = toastAction;
+  if (!fn) return;
+  toastAction = null;
+  clearTimeout(toastTimer);
+  $toast.classList.remove('show', 'toast-action');
+  fn();
+});
 /* ---------- YV-19 sync pill ----------
    OFFLINE while navigator.onLine is false; on reconnect (and on load) SYNCING
    until waitForPendingWrites resolves; hidden online with nothing pending.
@@ -1708,10 +1746,8 @@ function renderHome(){
           <div class="credit">By YE Chew</div>
         </div>
       </div>
-      <button type="button" class="home-theme-btn" id="themeToggleBtn" title="Switch theme" aria-label="Switch theme">${getTheme() === 'light' ? MOON_ICON : SUN_ICON}</button>
+      <button type="button" class="theme-glyph-btn home-theme-btn" id="themeToggleBtn" title="Switch theme" aria-label="Switch theme">${getTheme() === 'light' ? MOON_ICON : SUN_ICON}</button>
     </div>
-
-    <div class="hero-compact">Create a poll, share it, vote together.</div>
 
     ${(!isStandaloneMode() && !isInstallBannerSnoozed()) ? `
       <div class="install-banner-compact" id="install-banner">
@@ -2260,7 +2296,7 @@ function renderPollView(id, opts){
       <div class="poll-title-row">
         <h1 class="poll-title">${renderFormattedText(pollData.title)}</h1>
         <div class="title-actions">
-          <button class="chip chip-icon-only" id="themeToggleBtn" title="Switch theme" aria-label="Switch theme">${getTheme() === 'light' ? MOON_ICON : SUN_ICON}</button>
+          <button type="button" class="theme-glyph-btn" id="themeToggleBtn" title="Switch theme" aria-label="Switch theme">${getTheme() === 'light' ? MOON_ICON : SUN_ICON}</button>
           <button class="chip chip-icon-only" id="more-menu-btn" title="More options" aria-label="More options">⋯</button>
         </div>
       </div>
@@ -2458,14 +2494,34 @@ function renderPollView(id, opts){
     });
 
     document.getElementById('remind-btn')?.addEventListener('click', () => {
-      const voterCount = new Set(options.flatMap(o => Object.keys(o.votes || {}))).size;
-      const socialProof = voterCount > 0
-        ? `${voterCount} ${voterCount === 1 ? 'person has' : 'people have'} voted so far, so don't miss out!`
-        : `No one's voted yet, be the first!`;
-      // YV-11: the ballot emoji prefix and both em dashes are gone from the WhatsApp text
-      // (the zero-voter line had one too, so the message has no em dash in any case).
-      // A friend's own emoji inside pollData.title is user data and stays as typed.
-      const message = `Reminder to vote: "${pollData.title}"\n${socialProof}\n\n${location.href}`;
+      // YV-36: a tabbed poll gets one line per VISIBLE tab (same rule as Share results, YV-7) saying how many
+      // voted there and who is still missing. The roster is everyone who voted anywhere in the poll, hidden
+      // tabs included, so a hidden tab never inflates a visible tab's count. A plain poll keeps the one-line count.
+      // YV-11: no emoji and no em dash in the WhatsApp text. A friend's own emoji inside pollData.title is user
+      // data and stays as typed.
+      const roster = new Map(); // voter key -> name, across every option of the poll
+      options.forEach(o => Object.entries(o.votes || {}).forEach(([k, v]) => { if (!roster.has(k)) roster.set(k, (v && v.name) || 'Someone'); }));
+      let lines;
+      if (hasSections(pollData)) {
+        const visibleTabs = sectionListOf(pollData).filter(s => !s.hidden);
+        if (!visibleTabs.length) { closeOverlay(closeMenu); toast('No visible tabs'); return; }
+        if (!roster.size) {
+          lines = [`No one's voted yet, be the first!`];
+        } else {
+          lines = visibleTabs.map(s => {
+            const voted = new Set(options.filter(o => o.sectionId === s.id).flatMap(o => Object.keys(o.votes || {})));
+            const waiting = [...new Set([...roster].filter(([k]) => !voted.has(k)).map(([, n]) => n))];
+            if (!voted.size) return `${s.name}: nobody yet, waiting on ${waiting.join(', ')}`;
+            return waiting.length ? `${s.name}: ${voted.size} voted, waiting on ${waiting.join(', ')}` : `${s.name}: ${voted.size} voted, everyone is in`;
+          });
+        }
+      } else {
+        const voterCount = roster.size;
+        lines = [voterCount > 0
+          ? `${voterCount} ${voterCount === 1 ? 'person has' : 'people have'} voted so far, so don't miss out!`
+          : `No one's voted yet, be the first!`];
+      }
+      const message = `Reminder to vote: \"${pollData.title}\"\n${lines.join('\n')}\n\n${location.href}`;
       // wa.me with no phone number opens WhatsApp's own chat picker, pre-filled —
       // works whether the recipient has YouVote or not, since it's just a WhatsApp message.
       window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
@@ -2826,6 +2882,18 @@ function renderPollView(id, opts){
         undo: () => applyVoteState(prevVotedIds),
         redo: () => applyVoteState(newVotedIds),
       });
+
+      // YV-37: offer a one-tap WhatsApp message after a vote is added or moved. Not after a removal, and not
+      // from undo or redo (those go through applyVoteState, never through here). The text has NO poll link on purpose.
+      if (!wasVotedForThis) {
+        const tabName = sectioned ? (sectionListOf(pollData).find(s => s.id === activeSectionId) || {}).name : '';
+        const changed = prevVotedIds.length > 0;
+        const where = tabName ? `${tabName} in \"${pollData.title}\"` : `\"${pollData.title}\"`;
+        const message = `${changed ? 'I changed my vote on' : 'I voted on'} ${where}`;
+        toastWithAction(changed ? 'Vote changed' : 'Voted', 'Tell the group', () => {
+          window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
+        });
+      }
     }
 
     document.querySelectorAll('[data-toggle-expand]').forEach(btn => {
