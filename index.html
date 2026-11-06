@@ -240,6 +240,20 @@
   .chip:active{background:var(--violet-dim);}
   .chip-icon-only{padding:5px 9px;}
 
+  /* YV-32: collapsed Home shows one Create poll button; the card and button toggle via [hidden]
+     (.btn sets display, which would otherwise beat the hidden attribute). */
+  .home-create-open{margin-bottom:12px;}
+  .home-create-open[hidden],#home-create-card[hidden]{display:none;}
+  /* YV-33: Home theme toggle, plain glyph in a 40px tap box, no border or fill, low contrast until pressed.
+     The 36.5px right margin puts the glyph centre on the poll page's toggle glyph (37px chip, 6px gap, 34px "..." chip, 16px page
+     padding, 2px topbar padding); the -5px vertical margins keep the top bar as tall as before. */
+  .home-theme-btn{
+    width:40px;height:40px;padding:0;border:0;background:none;color:var(--text-muted);opacity:.6;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;margin:-5px 36.5px -5px 0;
+  }
+  .home-theme-btn svg{width:16px;height:16px;display:block;}
+  .home-theme-btn:active{opacity:1;color:var(--text);}
+
   .recent-list{display:flex;flex-direction:column;gap:8px;}
   .swipe-wrap{position:relative;border-radius:var(--radius-sm);overflow:hidden;}
   .swipe-delete{
@@ -889,6 +903,7 @@ const BOOT_SKELETON_HTML = `
    instructions instead of a button. */
 let deferredInstallPrompt = null;
 let homeFilter = 'all'; // 'all' | 'starred' — persists across re-renders of the home screen
+let homeCreateOpen = false; // YV-32: Home's Create poll card open (true) or collapsed to one button; survives renderHome(), resets on a page load
 function isStandaloneMode(){
   return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 }
@@ -1693,6 +1708,7 @@ function renderHome(){
           <div class="credit">By YE Chew</div>
         </div>
       </div>
+      <button type="button" class="home-theme-btn" id="themeToggleBtn" title="Switch theme" aria-label="Switch theme">${getTheme() === 'light' ? MOON_ICON : SUN_ICON}</button>
     </div>
 
     <div class="hero-compact">Create a poll, share it, vote together.</div>
@@ -1710,7 +1726,8 @@ function renderHome(){
       </div>
     ` : ''}
 
-    <div class="card">
+    <button type="button" class="btn btn-primary home-create-open" id="home-create-open-btn"${homeCreateOpen ? ' hidden' : ''}>Create poll</button>
+    <div class="card" id="home-create-card"${homeCreateOpen ? '' : ' hidden'}>
       <label class="field-label" for="new-title">Poll title</label>
       <input id="new-title" class="field" placeholder="e.g. Next outing?" maxlength="60" />
       <button type="button" class="add-section-link" id="add-section-link"><span class="ic-lbl">${svgIcon(ICONS.tag, 15)}Add a section (e.g. Dates + Food)</span></button>
@@ -1765,6 +1782,16 @@ function renderHome(){
     if (sectionBuilderWrap.children.length >= MAX_SECTIONS) addSectionLink.style.display = 'none';
   }
   addSectionLink.addEventListener('click', addHomeSectionRow);
+
+  // YV-32: one Create poll button; tap opens the card and the keyboard on the title field.
+  // focus() must run inside this tap handler, after the card is shown (a display:none field cannot take focus).
+  document.getElementById('home-create-open-btn').addEventListener('click', () => {
+    homeCreateOpen = true;
+    document.getElementById('home-create-open-btn').hidden = true;
+    document.getElementById('home-create-card').hidden = false;
+    document.getElementById('new-title').focus();
+  });
+  document.getElementById('themeToggleBtn').addEventListener('click', toggleTheme); // YV-33
 
   document.getElementById('create-btn').addEventListener('click', async () => {
     const titleInput = document.getElementById('new-title');
@@ -2260,9 +2287,9 @@ function renderPollView(id, opts){
           <button class="sheet-voter" id="voter-identity-btn"><span class="sheet-ic">${svgIcon(ICONS.user)}</span><span class="nm">${voter ? escapeHtml(voter.name) : 'Set your name'}</span><small>${voter ? 'tap to rename' : 'tap to set'}</small></button>
           <div class="sheet-group-label">Share</div>
           <div class="sheet-grid">
+            <button class="sheet-tile" id="remind-btn"><span class="sheet-ic">${svgIcon(ICONS.bell)}</span><span class="sheet-lbl">Remind everyone</span></button>
             <button class="sheet-tile" id="share-btn"><span class="sheet-ic">${svgIcon(ICONS.link)}</span><span class="sheet-lbl">Copy link</span></button>
             <button class="sheet-tile" id="copy-results-btn"><span class="sheet-ic">${svgIcon(ICONS.share)}</span><span class="sheet-lbl">Share results</span></button>
-            <button class="sheet-tile" id="remind-btn"><span class="sheet-ic">${svgIcon(ICONS.bell)}</span><span class="sheet-lbl">Remind everyone</span></button>
           </div>
           <div class="sheet-group-label">Poll</div>
           <div class="sheet-grid${sectioned && sections.some(s => s.hidden) ? ' sheet-grid-4' : ''}">
