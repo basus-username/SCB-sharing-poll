@@ -1435,6 +1435,29 @@ function formatDateOption(iso){
   const d = new Date(iso + 'T00:00:00');
   return `${d.getDate()} ${MONTHS[d.getMonth()]}, ${WEEKDAYS[d.getDay()]}`;
 }
+/* YV-40: date options always show earliest date first, whenever they were added. Options load in
+   creation order, so a date added later used to land at the bottom. Display order only: nothing is
+   written to Firestore, so existing polls fix themselves. Sorting uses the stored dateISO (YYYY-MM-DD,
+   which sorts correctly as text, also across a year end), so rows never move when people vote.
+   Each tab (sectionId, or '' for a plain poll) is sorted on its own, and the dates fill the positions
+   that date options already hold, so any text options in the same tab keep their place. A date option
+   with no dateISO (none should exist) keeps its place; equal dates keep creation order. */
+function orderDateOptions(list){
+  const out = list.slice();
+  const slots = new Map(); // sectionId or '' -> positions in `list` held by that tab's date options
+  list.forEach((o, i) => {
+    if (!(o.isDate && typeof o.dateISO === 'string' && o.dateISO)) return;
+    const k = o.sectionId || '';
+    if (!slots.has(k)) slots.set(k, []);
+    slots.get(k).push(i);
+  });
+  slots.forEach(pos => {
+    if (pos.length < 2) return;
+    const sorted = pos.map(i => list[i]).sort((x, y) => (x.dateISO < y.dateISO ? -1 : x.dateISO > y.dateISO ? 1 : 0));
+    pos.forEach((p, n) => { out[p] = sorted[n]; });
+  });
+  return out;
+}
 /* ---------- per-person colour, consistent across every poll on this device ---------- */
 const PERSON_COLORS = ['#A594F5','#EFB65C','#7FCB98','#E88989','#6FB8E0','#E0A5D8','#C9CE6B','#E39B6B','#8FD0C4','#B8A0F0'];
 function getPersonColor(voterId){
@@ -2246,7 +2269,7 @@ function renderPollView(id, opts){
   });
 
   onSnapshot(optionsRef, (snap) => {
-    options = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    options = orderDateOptions(snap.docs.map(d => ({ id: d.id, ...d.data() }))); // YV-40
     draw();
     // YV-10: auto-clean after the first options snapshot. The once-per-poll guard lives in
     // autoCleanPollLinks, so calling it on every snapshot is cheap and cannot loop.
@@ -2266,8 +2289,8 @@ function renderPollView(id, opts){
     const sectionOptions = sectioned ? options.filter(o => o.sectionId === activeSectionId) : options;
     const activeSection = sectioned ? sections.find(s => s.id === activeSectionId) : null;
     const activeMultiChoice = sectioned ? !!(activeSection && activeSection.multiChoice) : !!pollData.multiChoice;
-    // options stay in creation order — never re-sorted by vote count, so
-    // rows don't jump around as people vote. "Leading" is still highlighted.
+    // options stay in creation order (date options: date order, see orderDateOptions) — never
+    // re-sorted by vote count, so rows don't jump around as people vote. "Leading" is still highlighted.
     const topCount = sectionOptions.length ? Math.max(...sectionOptions.map(voteCount)) : 0;
     const totalVotes = sectionOptions.reduce((sum, o) => sum + voteCount(o), 0);
     // Whole-poll (not just this tab) — options added before the link-cleaning
