@@ -1436,25 +1436,46 @@ function formatDateOption(iso){
   return `${d.getDate()} ${MONTHS[d.getMonth()]}, ${WEEKDAYS[d.getDay()]}`;
 }
 /* YV-40: date options always show earliest date first, whenever they were added. Options load in
-   creation order, so a date added later used to land at the bottom. Display order only: nothing is
-   written to Firestore, so existing polls fix themselves. Sorting uses the stored dateISO (YYYY-MM-DD,
-   which sorts correctly as text, also across a year end), so rows never move when people vote.
+   creation order, so a date added later used to land at the bottom. Display only: nothing is
+   written to Firestore, so existing polls fix themselves and votes are never touched.
+   Sorting uses optionDateKey(): the stored dateISO (YYYY-MM-DD, sorts correctly as text, also across a
+   year end), or, for a row that has none (added by an older version, or typed as text in exactly the
+   app's own "25 Dec, Fri" format), the date read from the row's text. That text has no year, so the year
+   is the first one, counting from when the row was added, in which that day falls on that weekday.
    Each tab (sectionId, or '' for a plain poll) is sorted on its own, and the dates fill the positions
-   that date options already hold, so any text options in the same tab keep their place. A date option
-   with no dateISO (none should exist) keeps its place; equal dates keep creation order. */
+   that date rows already hold, so any other text options in the same tab keep their place. A row whose
+   date cannot be worked out keeps its place; equal dates keep creation order. */
+const DATE_ROW_RE = /^(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec), (Sun|Mon|Tue|Wed|Thu|Fri|Sat)$/;
+function optionDateKey(o){
+  if (o.isDate && typeof o.dateISO === 'string' && o.dateISO) return o.dateISO;
+  const m = typeof o.name === 'string' ? o.name.trim().match(DATE_ROW_RE) : null;
+  if (!m) return null;
+  const day = +m[1], mon = MONTHS.indexOf(m[2]), wd = WEEKDAYS.indexOf(m[3]);
+  if (mon < 0 || wd < 0 || day < 1) return null;
+  let ms = o.createdAt && typeof o.createdAt.toMillis === 'function' ? o.createdAt.toMillis() : NaN;
+  if (!(ms > 9.46e11 && ms < 4.1e12)) ms = Date.now(); // missing, still pending or implausible: use today
+  const from = new Date(ms); from.setHours(0, 0, 0, 0);
+  for (let y = from.getFullYear(); y <= from.getFullYear() + 12; y++) { // weekdays repeat within 11 years
+    const d = new Date(y, mon, day);
+    if (d.getMonth() !== mon || d.getDay() !== wd || d < from) continue; // not a real day (30 Feb), wrong weekday, or before it was added
+    return `${y}-${String(mon + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+  return null;
+}
 function orderDateOptions(list){
   const out = list.slice();
-  const slots = new Map(); // sectionId or '' -> positions in `list` held by that tab's date options
+  const keys = list.map(optionDateKey);
+  const slots = new Map(); // sectionId or '' -> positions in `list` held by that tab's date rows
   list.forEach((o, i) => {
-    if (!(o.isDate && typeof o.dateISO === 'string' && o.dateISO)) return;
+    if (!keys[i]) return;
     const k = o.sectionId || '';
     if (!slots.has(k)) slots.set(k, []);
     slots.get(k).push(i);
   });
   slots.forEach(pos => {
     if (pos.length < 2) return;
-    const sorted = pos.map(i => list[i]).sort((x, y) => (x.dateISO < y.dateISO ? -1 : x.dateISO > y.dateISO ? 1 : 0));
-    pos.forEach((p, n) => { out[p] = sorted[n]; });
+    const sorted = pos.map(i => ({ o: list[i], k: keys[i] })).sort((x, y) => (x.k < y.k ? -1 : x.k > y.k ? 1 : 0));
+    pos.forEach((p, n) => { out[p] = sorted[n].o; });
   });
   return out;
 }
